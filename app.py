@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
-import importlib
 import queue
 import threading
 import tkinter as tk
 from dataclasses import dataclass
 from tkinter import messagebox, ttk
+
+from dependencies import missing_dependencies
+
+_missing_dependencies = missing_dependencies()
+if _missing_dependencies:
+    _error_root = tk.Tk()
+    _error_root.withdraw()
+    messagebox.showerror(
+        "Dependencias faltantes",
+        "Faltan las siguientes dependencias: "
+        + ", ".join(_missing_dependencies)
+        + ".\n\nInstálalas con:\n  pip install -r requirements.txt",
+    )
+    _error_root.destroy()
+    raise SystemExit(1)
 
 from data.exercises import Exercise, load_exercises
 from math_engine.numeric_solver import NumericResult, solve_numeric
@@ -21,6 +35,8 @@ from ui.plot_view import PlotMode, PlotView
 from ui.status_bar import StatusBar
 from ui.step_by_step_panel import StepByStepPanel
 from ui.symbol_toolbar import SymbolToolbar
+
+SPINNER_DELAY_MS = 2000
 
 
 @dataclass
@@ -47,6 +63,7 @@ class App(tk.Tk):
 
         self.state = AppState()
         self._busy = False
+        self._spinner_job: str | None = None
         self._result_queue: queue.Queue = queue.Queue()
 
         self._configure_styles()
@@ -165,9 +182,27 @@ class App(tk.Tk):
         self.numeric_button.configure(state=state)
         if busy:
             self.status_bar.set_status(message or "Procesando…")
-            self.status_bar.show_spinner()
+            self._schedule_spinner()
         else:
+            self._cancel_spinner()
             self.status_bar.hide_spinner()
+
+    def _schedule_spinner(self) -> None:
+        self._cancel_spinner()
+        self._spinner_job = self.after(
+            SPINNER_DELAY_MS,
+            self._show_spinner_if_busy,
+        )
+
+    def _show_spinner_if_busy(self) -> None:
+        self._spinner_job = None
+        if self._busy:
+            self.status_bar.show_spinner()
+
+    def _cancel_spinner(self) -> None:
+        if self._spinner_job is not None:
+            self.after_cancel(self._spinner_job)
+            self._spinner_job = None
 
     def _conditions(self) -> SolverConditions:
         return self.condition_panel.get_conditions()
@@ -361,30 +396,7 @@ class App(tk.Tk):
         self.update()
 
 
-def _check_dependencies() -> list[str]:
-    missing: list[str] = []
-    for module in ("sympy", "scipy", "matplotlib", "numpy"):
-        try:
-            importlib.import_module(module)
-        except ImportError:
-            missing.append(module)
-    return missing
-
-
 def main() -> None:
-    missing = _check_dependencies()
-    if missing:
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror(
-            "Dependencias faltantes",
-            "Faltan las siguientes dependencias: "
-            + ", ".join(missing)
-            + ".\n\nInstálalas con:\n  pip install -r requirements.txt",
-        )
-        root.destroy()
-        return
-
     app = App()
     app.mainloop()
 
