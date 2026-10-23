@@ -284,8 +284,8 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
   - [x]* 18.18 Ejecutar test de Propiedad 9
     - Correr `pytest tests/test_properties.py::test_property_9_surface_3d_resolution_and_labels` con `max_examples=100`.
 
-- [ ] 19. Exportación de gráficas *(Opcional — Requirement 11)*
-  - [ ]* 19.1 Implementar `ui/export_manager.py`
+- [x] 19. Exportación de gráficas *(Opcional — Requirement 11)*
+  - [x]* 19.1 Implementar `ui/export_manager.py`
     - Implementar `export_figure(fig: Figure) -> None` que abra `tkinter.filedialog.asksaveasfilename` con filtros PNG/JPEG/PDF.
     - Usar `matplotlib.backends.backend_pdf.PdfPages` para exportar a PDF y `figure.savefig(..., dpi=300)` para imágenes.
     - Si `Pillow` no está instalado, mostrar un error descriptivo con instrucciones de instalación en lugar de abortar.

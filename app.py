@@ -145,6 +145,7 @@ class App(tk.Tk):
         self.status_bar = StatusBar(self)
         self.status_bar.grid(row=1, column=0, sticky="ew", padx=8, pady=(4, 8))
         self.status_bar.set_status("Listo. Escribe una EDO o elige un ejercicio.")
+        self.plot_view.on_export_status = self.status_bar.set_status
 
     # -------------------------------------------------------------- helpers
     def _poll_results(self) -> None:

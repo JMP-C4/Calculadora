@@ -111,3 +111,35 @@ def test_mode_selector_notifies_callback(root):
     assert view.current_mode == PlotMode.SURFACE_3D
     assert received == [PlotMode.SURFACE_3D]
     assert view.view_buttons.winfo_manager() != ""
+
+
+def test_export_button_reports_saved_path(root, monkeypatch, tmp_path):
+    target = tmp_path / "grafica.png"
+    monkeypatch.setattr(
+        "ui.plot_view.export_figure",
+        lambda figure, parent=None: (str(target), None),
+    )
+    view = PlotView(root)
+    messages = []
+    view.on_export_status = lambda message, level: messages.append((message, level))
+
+    view.export_button.invoke()
+
+    assert messages
+    message, level = messages[-1]
+    assert str(target) in message
+    assert level == "info"
+
+
+def test_export_button_reports_error(root, monkeypatch):
+    monkeypatch.setattr(
+        "ui.plot_view.export_figure",
+        lambda figure, parent=None: (None, "Pillow no está instalado."),
+    )
+    view = PlotView(root)
+    messages = []
+    view.on_export_status = lambda message, level: messages.append((message, level))
+
+    view.export_button.invoke()
+
+    assert messages[-1] == ("Pillow no está instalado.", "error")
