@@ -346,6 +346,8 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
   - [x] 25.1 Ejecutar la suite completa y el smoke test de la aplicación.
   - [x] 25.2 Fusionar `feature/hardening` en `develop` y `develop` en `main`.
   - [x] 25.3 Crear y publicar la etiqueta `v1.1.0`.
+  - [x] 25.4 Corregir el pin de Pillow a `12.1.0` para mantener soporte de Python 3.10-3.12.
+    - _Requirements: 10.2, 10.3_
   - _Requirements: 10.2, 10.3_
 
 ## Notas

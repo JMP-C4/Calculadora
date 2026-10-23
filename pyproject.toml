@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ode-calculator"
-version = "1.1.0"
+version = "1.1.1"
 description = "Calculadora de EDOs de primer orden con solución simbólica, numérica y visualización"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,7 +14,7 @@ dependencies = [
     "scipy==1.13.1",
     "matplotlib==3.9.2",
     "numpy==1.26.4",
-    "Pillow==13.0.0",
+    "Pillow==12.1.0",
 ]
 
 [project.optional-dependencies]
