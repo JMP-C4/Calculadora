@@ -344,8 +344,8 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
 
 - [ ] 25. Checkpoint de release
   - [x] 25.1 Ejecutar la suite completa y el smoke test de la aplicación.
-  - [ ] 25.2 Fusionar `feature/hardening` en `develop` y `develop` en `main`.
-  - [ ] 25.3 Crear y publicar la etiqueta `v1.0.0`.
+  - [x] 25.2 Fusionar `feature/hardening` en `develop` y `develop` en `main`.
+  - [x] 25.3 Crear y publicar la etiqueta `v1.0.0`.
   - _Requirements: 10.2, 10.3_
 
 ## Notas
