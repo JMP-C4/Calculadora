@@ -80,14 +80,14 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
 - [x] 6. Checkpoint — verificar math engine completo
   - Ejecutar `pytest tests/test_parser.py tests/test_symbolic_solver.py tests/test_numeric_solver.py tests/test_step_generator.py` y asegurarse de que todos los tests pasen. Preguntar al usuario si surgen dudas.
 
-- [ ] 7. Catálogo de ejercicios predefinidos
-  - [ ] 7.1 Implementar `data/exercises.py`
+- [x] 7. Catálogo de ejercicios predefinidos
+  - [x] 7.1 Implementar `data/exercises.py`
     - Definir el dataclass `Exercise` con campos `id`, `ode_type`, `name`, `equation_text`, `latex_str`, `description`, `initial_conditions`.
     - Implementar `load_exercises() -> list[Exercise]` con ≥ 15 ejercicios: separables (≥3), lineales (≥3), exactas (≥2), homogéneas (≥2), Bernoulli (≥2), aplicaciones (crecimiento/decaimiento, mezcla, circuito RC) (≥3).
     - Cada ejercicio debe incluir `equation_text` en sintaxis Python/SymPy válida y `latex_str` para renderizado.
     - _Requirements: 8.1, 8.3_
 
-  - [ ]* 7.2 Escribir tests unitarios para los ejercicios
+  - [x]* 7.2 Escribir tests unitarios para los ejercicios
     - El catálogo contiene ≥ 15 ejercicios.
     - Cada tipo requerido tiene el número mínimo de ejercicios.
     - Cada `Exercise.equation_text` es parseable sin error por `parse_ode`.
