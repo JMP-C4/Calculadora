@@ -162,7 +162,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
   - Agregar botón "Copiar ecuación" que copie `exercise.equation_text` al portapapeles.
   - _Requirements: 8.2, 8.3, 8.4, 8.5_
 
-- [ ] 14. Componente de UI: barra de estado
+- [x] 14. Componente de UI: barra de estado
   - Implementar `ui/status_bar.py`
   - Crear `StatusBar(ttk.Frame)` en la parte inferior de la ventana.
   - Implementar `set_status(message, level="info")` con estilos diferenciados para `info`, `error` y `warning`.
