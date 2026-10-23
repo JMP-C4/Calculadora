@@ -1,0 +1,30 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# Herramientas
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Skills instaladas (se reproducen con skills-lock.json)
+.agents/
+.claude/
+
+# Sistema / editores
+.DS_Store
+.idea/
+.vscode/
+*.swp
