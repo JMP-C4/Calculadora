@@ -154,7 +154,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Habilitar rotación interactiva mediante arrastre del ratón (nativa de `mpl_toolkits.mplot3d`).
     - _Requirements: 5.6, 5.10, 5.11, 5.12, 5.13_
 
-- [ ] 13. Componente de UI: biblioteca de ejercicios
+- [x] 13. Componente de UI: biblioteca de ejercicios
   - Implementar `ui/exercise_library.py`
   - Crear `ExerciseLibrary(ttk.Frame)` con `ttk.Treeview` o `tk.Listbox` con scroll para listar los ejercicios.
   - Mostrar para cada ejercicio: nombre del tipo, ecuación formateada tipográficamente y descripción breve.
