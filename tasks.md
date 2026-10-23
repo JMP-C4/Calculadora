@@ -6,20 +6,20 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
 
 ## Tareas
 
-- [ ] 1. Infraestructura base del proyecto
+- [x] 1. Infraestructura base del proyecto
   - Crear la estructura de directorios: `math_engine/`, `ui/`, `data/`, `tests/` con sus archivos `__init__.py`.
   - Crear `requirements.txt` con las versiones exactas: `sympy==1.13.1`, `scipy==1.13.1`, `matplotlib==3.9.2`, `numpy==1.26.4`, `hypothesis==6.112.0`, `pytest==8.3.3`.
   - Crear `tests/conftest.py` con las estrategias Hypothesis compartidas: `valid_ode_texts`, `invalid_ode_texts`, `solvable_odes`, `numeric_odes`, `valid_rhs_exprs` y el `SHORTCUT_MAP`.
   - _Requirements: 10.1, 10.2, 10.3_
 
-- [ ] 2. Parser y validador de ecuaciones
-  - [ ] 2.1 Implementar `math_engine/parser.py`
+- [x] 2. Parser y validador de ecuaciones
+  - [x] 2.1 Implementar `math_engine/parser.py`
     - Definir el dataclass `ParseResult` con campos `rhs`, `latex_str` y `error`.
     - Implementar `parse_ode(text: str) -> ParseResult` con normalización de `y'` y `dy/dx`, separación por `=`, llamada a `sp.sympify` y captura de `SympifyError`, `TypeError` y `ValueError`.
     - Soportar las funciones estándar: `sin`, `cos`, `tan`, `exp`, `log`, `sqrt`.
     - _Requirements: 1.1, 1.3, 1.4_
 
-  - [ ]* 2.2 Escribir tests unitarios para el parser
+  - [x]* 2.2 Escribir tests unitarios para el parser
     - Verificar que `dy/dx = x + y` retorna `rhs = x + y(x)` y `error = None`.
     - Verificar que `y' = sin(x)` se parsea sin error.
     - Verificar que cadena vacía retorna `error ≠ None`.
@@ -28,8 +28,8 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Verificar que todas las funciones estándar se parsean sin error.
     - _Requirements: 1.1, 1.3, 1.4_
 
-- [ ] 3. Solver simbólico con pasos detallados
-  - [ ] 3.1 Implementar `math_engine/symbolic_solver.py`
+- [x] 3. Solver simbólico con pasos detallados
+  - [x] 3.1 Implementar `math_engine/symbolic_solver.py`
     - Definir los dataclasses `StepByStepResult`, `SymbolicResult`.
     - Implementar `solve_symbolic(rhs, conditions=None) -> SymbolicResult` usando `sympy.dsolve`.
     - Calcular la solución particular aplicando `sympy.solve` sobre `C1` cuando se proporcionan condiciones iniciales.
@@ -37,15 +37,15 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Detectar el tipo de EDO (`ode_type`): separable, lineal, exacta, homogénea, Bernoulli.
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [ ]* 3.2 Escribir tests unitarios para el solver simbólico
+  - [x]* 3.2 Escribir tests unitarios para el solver simbólico
     - `dy/dx = y` tiene solución general `y = C1 * exp(x)`.
     - `dy/dx = x` tiene solución general `y = x**2/2 + C1`.
     - Con condiciones iniciales `(0, 1)` en `dy/dx = y`, la particular es `y = exp(x)`.
     - EDO no resoluble retorna `SymbolicResult.error ≠ None`.
     - _Requirements: 3.1, 3.2, 3.3, 3.5_
 
-- [ ] 4. Generador de pasos paso a paso
-  - [ ] 4.1 Implementar `math_engine/step_generator.py`
+- [x] 4. Generador de pasos paso a paso
+  - [x] 4.1 Implementar `math_engine/step_generator.py`
     - Definir el dataclass `SolutionStep` con campos `number`, `operation`, `latex_expr`, `justification`, `detail`.
     - Implementar `generate_steps(rhs, symbolic_result) -> StepByStepResult` que desglose la resolución según el tipo de EDO detectado.
     - Para EDOs separables: identificación, separación `f(y)dy = g(x)dx`, integración de cada lado, despeje de `y`, aplicación de condiciones.
@@ -56,15 +56,15 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Para el caso numérico (sin solución simbólica): generar pasos del método numérico (discretización, evaluación de `f(x,y)`, avance del integrador).
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.9_
 
-  - [ ]* 4.2 Escribir tests unitarios para el generador de pasos
+  - [x]* 4.2 Escribir tests unitarios para el generador de pasos
     - `generate_steps` de `dy/dx = y` (separable) retorna lista no vacía con el paso de identificación de tipo.
     - `generate_steps` de EDO lineal incluye paso de factor integrante.
     - Todos los pasos tienen `latex_expr` no vacío y `justification` no vacío.
     - `ascii_text` no está vacío y contiene los números de paso.
     - _Requirements: 6.1, 6.2, 6.7_
 
-- [ ] 5. Solver numérico
-  - [ ] 5.1 Implementar `math_engine/numeric_solver.py`
+- [x] 5. Solver numérico
+  - [x] 5.1 Implementar `math_engine/numeric_solver.py`
     - Definir el dataclass `NumericResult` con `x_arr`, `y_arr`, `success`, `message`.
     - Implementar `solve_numeric(rhs, conditions, n_points=500) -> NumericResult` usando `sympy.lambdify` y `scipy.integrate.solve_ivp`.
     - Devolver `success=False` si `solve_ivp.success` es `False`, con el mensaje de error del solver.
@@ -77,7 +77,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Intervalo inválido (`x_min > x_max`) retorna `success=False`.
     - _Requirements: 4.1, 4.3, 4.4_
 
-- [ ] 6. Checkpoint — verificar math engine completo
+- [x] 6. Checkpoint — verificar math engine completo
   - Ejecutar `pytest tests/test_parser.py tests/test_symbolic_solver.py tests/test_numeric_solver.py tests/test_step_generator.py` y asegurarse de que todos los tests pasen. Preguntar al usuario si surgen dudas.
 
 - [ ] 7. Catálogo de ejercicios predefinidos
