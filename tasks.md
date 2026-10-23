@@ -132,22 +132,22 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
   - Agregar botón "Copiar pasos" que llame a `copy_to_clipboard()`.
   - _Requirements: 6.1, 6.7, 6.8, 6.10_
 
-- [ ] 12. Componente de UI: vista de gráficas
-  - [ ] 12.1 Implementar `ui/plot_view.py` — modo solución `y(x)`
+- [x] 12. Componente de UI: vista de gráficas
+  - [x] 12.1 Implementar `ui/plot_view.py` — modo solución `y(x)`
     - Crear `PlotMode(str, Enum)` con valores `SOLUTION`, `DIRECTION_FIELD`, `SURFACE_3D`.
     - Crear `PlotView(ttk.Frame)` con `FigureCanvasTkAgg` de tamaño completo y selector de modo (`ttk.Notebook` o `ttk.Combobox`).
     - Implementar `plot_solution(symbolic, numeric, conditions)`: graficar `y(x)` con ejes etiquetados, título y cuadrícula. Superponer curva numérica con color y etiqueta diferenciados. Renderizar familia de curvas si hay múltiples condiciones iniciales.
     - Incluir la barra de herramientas nativa de Matplotlib (zoom, pan, guardar).
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-  - [ ] 12.2 Implementar el modo Direction Field en `PlotView`
+  - [x] 12.2 Implementar el modo Direction Field en `PlotView`
     - Implementar `plot_direction_field(rhs, conditions, solution_curve=None)`: calcular y renderizar el campo de pendientes sobre cuadrícula uniforme usando segmentos normalizados.
     - Usar el intervalo `[-5, 5] × [-5, 5]` por defecto si `conditions` no tiene valores explícitos; registrar los valores usados en la `StatusBar`.
     - Si `solution_curve` está disponible, superponer la curva `y(x)` sobre el campo.
     - Implementar la función auxiliar `compute_direction_field_bounds(rhs, conditions)` que retorne la tupla `(x_min, x_max, y_min, y_max)`.
     - _Requirements: 5.6, 5.7, 5.8, 5.9_
 
-  - [ ] 12.3 Implementar el modo Surface 3D en `PlotView`
+  - [x] 12.3 Implementar el modo Surface 3D en `PlotView`
     - Implementar `plot_surface_3d(rhs, conditions)`: renderizar `z = f(x, y)` con `mpl_toolkits.mplot3d` sobre cuadrícula de mínimo 50×50 puntos, ejes etiquetados `x`, `y`, `z = f(x,y)` y barra de color.
     - Implementar `set_3d_view(elev, azim)` para las vistas predefinidas.
     - Agregar tres botones de vista predefinida: Frontal (0°, 0°), Lateral (0°, 90°), Isométrica (30°, 45°).
