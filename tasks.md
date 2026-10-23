@@ -172,8 +172,8 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
 - [x] 15. Checkpoint — verificar UI components
   - Verificar que todos los módulos de `ui/` y `data/` importan sin error ejecutando `python -c "from ui import *; from data.exercises import load_exercises"`. Preguntar al usuario si surgen dudas.
 
-- [ ] 16. Controlador principal e integración
-  - [ ] 16.1 Implementar `app.py` — esqueleto del controlador
+- [x] 16. Controlador principal e integración
+  - [x] 16.1 Implementar `app.py` — esqueleto del controlador
     - Definir el dataclass `AppState` con campos `current_equation_text`, `last_parse_result`, `symbolic_result`, `numeric_result`, `conditions`, `plot_mode`, `step_by_step_visible`.
     - Crear `App(tk.Tk)` con el layout raíz usando `ttk.PanedWindow` horizontal: panel izquierdo (`SymbolToolbar`, `EquationInput`, `ConditionPanel`, botones Resolver, `ExerciseLibrary`) y panel derecho (`MathPreview`, `StepByStepPanel`, `PlotView`).
     - Implementar `_configure_styles()` con `ttk.Style` para definir colores, fuentes y apariencia de todos los widgets.
@@ -181,30 +181,30 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Implementar el bloque `try/except ImportError` al inicio para verificar las dependencias críticas y mostrar `tkinter.messagebox.showerror` si falta alguna.
     - _Requirements: 9.1, 9.2, 9.3, 10.4_
 
-  - [ ] 16.2 Implementar el flujo de cambio de ecuación en `app.py`
+  - [x] 16.2 Implementar el flujo de cambio de ecuación en `app.py`
     - Implementar `_on_equation_changed(text: str)`: llamar a `parse_ode`, actualizar `AppState`, actualizar `MathPreview` (render o placeholder) y mostrar errores en `StatusBar`.
     - Conectar el callback `EquationInput.on_change` a `_on_equation_changed`.
     - _Requirements: 1.2, 1.3, 2.1, 2.2_
 
-  - [ ] 16.3 Implementar el flujo de resolución simbólica en `app.py`
+  - [x] 16.3 Implementar el flujo de resolución simbólica en `app.py`
     - Implementar `_on_solve_symbolic()`: ejecutar `solve_symbolic` en hilo secundario (`threading.Thread`), activar `StatusBar.show_spinner()` y, al completarse, actualizar `MathPreview`, `StepByStepPanel` y `PlotView` en el hilo principal con `app.after(0, callback)`.
     - Si `SymbolicResult.error` está poblado, mostrar el error y ofrecer automáticamente la solución numérica.
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 6.1, 9.4, 9.5_
 
-  - [ ] 16.4 Implementar el flujo de resolución numérica en `app.py`
+  - [x] 16.4 Implementar el flujo de resolución numérica en `app.py`
     - Implementar `_on_solve_numeric()`: validar que `ConditionPanel` tiene `x₀`, `y₀`, `x_min`, `x_max`; ejecutar `solve_numeric` en hilo secundario; al completarse, actualizar `PlotView` y `StatusBar`.
     - Si `NumericResult.success` es `False`, mostrar el mensaje y sugerir ajustar el intervalo o las condiciones iniciales.
     - _Requirements: 4.1, 4.2, 4.4, 9.4, 9.5_
 
-  - [ ] 16.5 Implementar el flujo de cambio de modo de visualización en `app.py`
+  - [x] 16.5 Implementar el flujo de cambio de modo de visualización en `app.py`
     - Implementar `_on_mode_changed(mode: PlotMode)`: según el modo seleccionado, llamar a `PlotView.plot_solution`, `PlotView.plot_direction_field` o `PlotView.plot_surface_3d` con los datos del `AppState` actual.
     - _Requirements: 5.6, 5.7, 5.9, 5.10_
 
-  - [ ] 16.6 Implementar la carga de ejercicios desde `ExerciseLibrary` en `app.py`
+  - [x] 16.6 Implementar la carga de ejercicios desde `ExerciseLibrary` en `app.py`
     - Conectar `ExerciseLibrary.on_select` al controlador: cargar `exercise.equation_text` en `EquationInput`, cargar `exercise.initial_conditions` en `ConditionPanel` si existen, y disparar `_on_equation_changed`.
     - _Requirements: 8.2, 8.5_
 
-  - [ ] 16.7 Implementar los atajos de teclado globales en `app.py`
+  - [x] 16.7 Implementar los atajos de teclado globales en `app.py`
     - Implementar `_bind_shortcuts()`: ligar `Ctrl+D`, `Ctrl+I`, `Ctrl+Shift+I`, `Ctrl+E`, `Ctrl+Shift+S`, `Ctrl+P` a nivel de ventana para que, si el foco no está en `EquationInput`, se transfiera el foco e inserte el token.
     - _Requirements: 7.1, 7.4_
 
