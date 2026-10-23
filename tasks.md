@@ -93,8 +93,8 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Cada `Exercise.equation_text` es parseable sin error por `parse_ode`.
     - _Requirements: 8.1_
 
-- [ ] 8. Componentes de UI: entrada y barra de símbolos
-  - [ ] 8.1 Implementar `ui/equation_input.py`
+- [x] 8. Componentes de UI: entrada y barra de símbolos
+  - [x] 8.1 Implementar `ui/equation_input.py`
     - Crear `EquationInput(ttk.Frame)` con un `tk.Text` de una línea.
     - Implementar `insert_token(token, place_cursor_inside=False)`: inserta el token en la posición del cursor y, si `place_cursor_inside=True`, posiciona el cursor dentro de los paréntesis.
     - Implementar `get_text() -> str` y `set_text(text: str) -> None`.
@@ -102,7 +102,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Ligar los atajos de teclado (`Ctrl+D`, `Ctrl+I`, `Ctrl+Shift+I`, `Ctrl+E`, `Ctrl+Shift+S`, `Ctrl+P`) al método `insert_token` cuando el widget tiene foco.
     - _Requirements: 1.1, 7.1, 7.2, 7.4_
 
-  - [ ] 8.2 Implementar `ui/symbol_toolbar.py`
+  - [x] 8.2 Implementar `ui/symbol_toolbar.py`
     - Crear `SymbolToolbar(ttk.Frame)` con botones `ttk.Button` para cada símbolo del Requirement 7.1.
     - Al hacer clic en un botón, llamar a `EquationInput.insert_token(...)`.
     - _Requirements: 7.3_
