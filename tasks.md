@@ -342,7 +342,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Job adicional con Tk y Xvfb para ejecutar también los tests de UI en Python 3.12.
     - _Requirements: 10.3_
 
-- [ ] 25. Checkpoint de release
+- [x] 25. Checkpoint de release
   - [x] 25.1 Ejecutar la suite completa y el smoke test de la aplicación.
   - [x] 25.2 Fusionar `feature/hardening` en `develop` y `develop` en `main`.
   - [x] 25.3 Crear y publicar la etiqueta `v1.1.0`.
