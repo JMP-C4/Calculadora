@@ -169,7 +169,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
   - Implementar `show_spinner() -> None` y `hide_spinner() -> None` para el indicador de progreso visual.
   - _Requirements: 9.4, 9.5_
 
-- [ ] 15. Checkpoint — verificar UI components
+- [x] 15. Checkpoint — verificar UI components
   - Verificar que todos los módulos de `ui/` y `data/` importan sin error ejecutando `python -c "from ui import *; from data.exercises import load_exercises"`. Preguntar al usuario si surgen dudas.
 
 - [ ] 16. Controlador principal e integración
