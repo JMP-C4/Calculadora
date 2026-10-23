@@ -60,6 +60,7 @@ class PlotView(ttk.Frame):
         self.axes = self.figure.add_subplot(111)
         self.current_mode = PlotMode.SOLUTION
         self.on_mode_change: Callable[[PlotMode], None] | None = None
+        self.last_surface_shape: tuple[int, int] | None = None
 
         header = ttk.Frame(self)
         header.pack(fill="x", pady=(0, 4))
@@ -338,6 +339,7 @@ class PlotView(ttk.Frame):
             self._show_message("No se pudo evaluar f(x, y) para la superficie.")
             return
 
+        self.last_surface_shape = z_mesh.shape
         surface = axes.plot_surface(
             x_mesh,
             y_mesh,

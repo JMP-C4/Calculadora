@@ -77,3 +77,20 @@ def test_step_by_step_always_present_on_success():
     assert result.step_by_step is not None
     assert len(result.step_by_step.steps) >= 2
     assert result.step_by_step.ascii_text
+
+
+def test_particular_solution_selects_compatible_branch():
+    rhs = -(2 * x + y) / (x + 2 * y)
+
+    result = solve_symbolic(rhs, _conditions(1.0, 1.0))
+
+    assert result.particular_solution is not None
+    value = complex(sp.N(result.particular_solution.rhs.subs(x, 1.0)))
+    assert abs(value - 1.0) < 1e-9
+
+
+def test_equilibrium_solution_satisfies_initial_condition():
+    result = solve_symbolic(y**2 - y, _conditions(1.0, 1.0))
+
+    assert result.particular_solution is not None
+    assert sp.simplify(result.particular_solution.rhs - 1) == 0
