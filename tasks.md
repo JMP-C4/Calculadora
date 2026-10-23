@@ -123,7 +123,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
   - Cuando hay condiciones iniciales disponibles, renderizar ecuación y condiciones juntas.
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 11. Componente de UI: panel paso a paso
+- [x] 11. Componente de UI: panel paso a paso
   - Implementar `ui/step_by_step_panel.py`
   - Crear `StepByStepPanel(ttk.Frame)` con un `tk.Text` de solo lectura con scroll vertical.
   - Implementar `display_steps(steps: list[SolutionStep]) -> None` que renderice cada paso con: número de paso, figura Matplotlib incrustada con la expresión LaTeX (`mathtext`), justificación textual y sub-detalle atómico si existe.
