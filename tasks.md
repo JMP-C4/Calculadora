@@ -114,7 +114,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
   - Incluir valores por defecto `x_min=-5.0`, `x_max=5.0` visibles en los campos.
   - _Requirements: 4.2, 5.2_
 
-- [ ] 10. Componente de UI: previsualización matemática
+- [x] 10. Componente de UI: previsualización matemática
   - Implementar `ui/math_preview.py`
   - Crear `MathPreview(ttk.Frame)` que incruste una figura Matplotlib (`FigureCanvasTkAgg`) de tamaño fijo.
   - Implementar `render(latex_str: str) -> None` que use `matplotlib.mathtext` para renderizar la cadena LaTeX con fuente mínima de 14pt.
