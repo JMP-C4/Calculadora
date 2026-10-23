@@ -296,6 +296,58 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
 - [x] 20. Checkpoint final — suite completa de tests
   - Ejecutar `pytest tests/` con todos los tests unitarios y de propiedades y asegurarse de que todos pasen. Preguntar al usuario si surgen dudas.
 
+## Tramo de hardening y release (21-25)
+
+- [x] 21. Documentación y empaquetado
+  - [x] 21.1 Reescribir `README.md`
+    - Incluir descripción, características, requisitos, instalación, ejecución, pruebas, estructura del proyecto, atajos y uso de la exportación.
+    - Documentar la necesidad de Tk y el uso de Xvfb en entornos sin display.
+    - _Requirements: 10.1, 10.3_
+
+  - [x] 21.2 Crear `pyproject.toml`
+    - Metadatos del proyecto, versión 1.0.0, `requires-python >=3.10`, dependencias fijadas y entry point `ode-calculator = "app:main"`.
+    - Configurar pytest: `testpaths`, `pythonpath` y filtrado de avisos de Pyparsing.
+    - _Requirements: 10.1, 10.2_
+
+  - [x] 21.3 Fijar versiones exactas en `requirements.txt`
+    - Reemplazar el rango de Pillow por una versión exacta compatible con Python 3.10-3.12.
+    - _Requirements: 10.2_
+
+- [x] 22. Robustez del arranque
+  - [x] 22.1 Crear `dependencies.py`
+    - Función `missing_dependencies()` sin importar librerías de terceros.
+    - _Requirements: 10.4_
+
+  - [x] 22.2 Verificar dependencias antes de los imports de SymPy/SciPy/Matplotlib/NumPy en `app.py`
+    - Mostrar un mensaje descriptivo con instrucciones de instalación y abortar el arranque si falta alguna.
+    - _Requirements: 10.4_
+
+  - [x] 22.3 Añadir tests del verificador de dependencias
+    - Cubrir caso completo y caso con dependencias faltantes mediante monkeypatch.
+    - _Requirements: 10.4_
+
+- [x] 23. Spinner diferido
+  - [x] 23.1 Mostrar el spinner solo cuando la operación supere 2 segundos
+    - Programar el spinner con `after(2000, ...)` y cancelarlo al terminar.
+    - Mantener el mensaje de estado inmediato.
+    - _Requirements: 9.4, 9.5_
+
+  - [x] 23.2 Añadir test del comportamiento diferido
+    - Verificar que no se muestra al iniciar y que se muestra al vencer el temporizador simulado.
+    - _Requirements: 9.5_
+
+- [x] 24. Integración continua
+  - [x] 24.1 Crear `.github/workflows/tests.yml`
+    - Matriz Python 3.10, 3.11 y 3.12 ejecutando la suite con `pytest`.
+    - Job adicional con Tk y Xvfb para ejecutar también los tests de UI en Python 3.12.
+    - _Requirements: 10.3_
+
+- [ ] 25. Checkpoint de release
+  - [x] 25.1 Ejecutar la suite completa y el smoke test de la aplicación.
+  - [ ] 25.2 Fusionar `feature/hardening` en `develop` y `develop` en `main`.
+  - [ ] 25.3 Crear y publicar la etiqueta `v1.0.0`.
+  - _Requirements: 10.2, 10.3_
+
 ## Notas
 
 - Las tareas marcadas con `*` son opcionales y pueden omitirse para un MVP más rápido.

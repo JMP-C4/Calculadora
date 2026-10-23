@@ -1,0 +1,62 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Instalar Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ejecutar tests
+        run: xvfb-run -a python -m pytest tests/ -q
+
+  ui-tests:
+    name: UI tests (Python 3.12 + Tk)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Tk y Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk python3-venv xvfb
+
+      - name: Crear entorno con Tk del sistema
+        run: python3 -m venv --system-site-packages .venv-ci
+
+      - name: Instalar dependencias
+        run: |
+          .venv-ci/bin/python -m pip install --upgrade pip
+          .venv-ci/bin/pip install -r requirements.txt
+
+      - name: Ejecutar suite completa
+        run: xvfb-run -a .venv-ci/bin/python -m pytest tests/ -q

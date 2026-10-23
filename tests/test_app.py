@@ -147,3 +147,17 @@ def test_global_shortcut_inserts_token(app):
     app._insert_global("pi", False)
 
     assert "pi" in app.equation_input.get_text()
+
+
+def test_spinner_is_deferred_until_operation_is_slow(app):
+    app._set_busy(True, "Calculando…")
+
+    assert app.status_bar.spinner.winfo_manager() == ""
+    assert _wait_until(
+        app,
+        lambda: bool(app.status_bar.spinner.winfo_manager()),
+        timeout=3.0,
+    )
+
+    app._set_busy(False)
+    assert app.status_bar.spinner.winfo_manager() == ""
