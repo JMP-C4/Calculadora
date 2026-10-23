@@ -107,7 +107,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Al hacer clic en un botón, llamar a `EquationInput.insert_token(...)`.
     - _Requirements: 7.3_
 
-- [ ] 9. Componente de UI: panel de condiciones
+- [x] 9. Componente de UI: panel de condiciones
   - Implementar `ui/condition_panel.py`
   - Crear `ConditionPanel(ttk.LabelFrame)` con campos `ttk.Entry` para `x₀`, `y₀`, `x_min`, `x_max`, `y_min`, `y_max`.
   - Implementar `get_conditions() -> SolverConditions` y `set_conditions(cond: SolverConditions) -> None`.
