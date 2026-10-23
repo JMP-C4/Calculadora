@@ -6,4 +6,4 @@ hypothesis==6.112.0
 pytest==8.3.3
 # tkinter viene incluido en la biblioteca estándar de Python (no requiere instalación)
 # Exportación de gráficas (Requirement 11):
-Pillow==13.0.0
+Pillow==12.1.0
