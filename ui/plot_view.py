@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import tkinter as tk
 from enum import Enum
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import sympy as sp
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
+
+from ui.export_manager import export_figure
 
 if TYPE_CHECKING:  # pragma: no cover
     from math_engine.numeric_solver import NumericResult
@@ -60,6 +62,8 @@ class PlotView(ttk.Frame):
         self.axes = self.figure.add_subplot(111)
         self.current_mode = PlotMode.SOLUTION
         self.on_mode_change: Callable[[PlotMode], None] | None = None
+        self.last_surface_shape: tuple[int, int] | None = None
+        self.on_export_status: Callable[[str, str], None] | None = None
 
         header = ttk.Frame(self)
         header.pack(fill="x", pady=(0, 4))
@@ -74,6 +78,13 @@ class PlotView(ttk.Frame):
         self.mode_selector.set(self.current_mode.value)
         self.mode_selector.pack(side="left")
         self.mode_selector.bind("<<ComboboxSelected>>", self._on_mode_selected)
+
+        self.export_button = ttk.Button(
+            header,
+            text="Exportar",
+            command=self._export_active_figure,
+        )
+        self.export_button.pack(side="right", padx=(6, 0))
 
         self.view_buttons = ttk.Frame(header)
         self._view_buttons = {}
@@ -106,6 +117,16 @@ class PlotView(ttk.Frame):
         self._update_view_buttons()
         if self.on_mode_change is not None:
             self.on_mode_change(mode)
+
+    def _export_active_figure(self) -> None:
+        path, error = export_figure(self.figure, parent=self)
+        if error:
+            if self.on_export_status is not None:
+                self.on_export_status(error, "error")
+            else:
+                messagebox.showerror("Exportar gráfica", error, parent=self)
+        elif path and self.on_export_status is not None:
+            self.on_export_status(f"Gráfica exportada: {path}", "info")
 
     def _update_view_buttons(self) -> None:
         if self.current_mode == PlotMode.SURFACE_3D:
@@ -338,6 +359,7 @@ class PlotView(ttk.Frame):
             self._show_message("No se pudo evaluar f(x, y) para la superficie.")
             return
 
+        self.last_surface_shape = z_mesh.shape
         surface = axes.plot_surface(
             x_mesh,
             y_mesh,

@@ -172,8 +172,8 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
 - [x] 15. Checkpoint — verificar UI components
   - Verificar que todos los módulos de `ui/` y `data/` importan sin error ejecutando `python -c "from ui import *; from data.exercises import load_exercises"`. Preguntar al usuario si surgen dudas.
 
-- [ ] 16. Controlador principal e integración
-  - [ ] 16.1 Implementar `app.py` — esqueleto del controlador
+- [x] 16. Controlador principal e integración
+  - [x] 16.1 Implementar `app.py` — esqueleto del controlador
     - Definir el dataclass `AppState` con campos `current_equation_text`, `last_parse_result`, `symbolic_result`, `numeric_result`, `conditions`, `plot_mode`, `step_by_step_visible`.
     - Crear `App(tk.Tk)` con el layout raíz usando `ttk.PanedWindow` horizontal: panel izquierdo (`SymbolToolbar`, `EquationInput`, `ConditionPanel`, botones Resolver, `ExerciseLibrary`) y panel derecho (`MathPreview`, `StepByStepPanel`, `PlotView`).
     - Implementar `_configure_styles()` con `ttk.Style` para definir colores, fuentes y apariencia de todos los widgets.
@@ -181,111 +181,111 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Implementar el bloque `try/except ImportError` al inicio para verificar las dependencias críticas y mostrar `tkinter.messagebox.showerror` si falta alguna.
     - _Requirements: 9.1, 9.2, 9.3, 10.4_
 
-  - [ ] 16.2 Implementar el flujo de cambio de ecuación en `app.py`
+  - [x] 16.2 Implementar el flujo de cambio de ecuación en `app.py`
     - Implementar `_on_equation_changed(text: str)`: llamar a `parse_ode`, actualizar `AppState`, actualizar `MathPreview` (render o placeholder) y mostrar errores en `StatusBar`.
     - Conectar el callback `EquationInput.on_change` a `_on_equation_changed`.
     - _Requirements: 1.2, 1.3, 2.1, 2.2_
 
-  - [ ] 16.3 Implementar el flujo de resolución simbólica en `app.py`
+  - [x] 16.3 Implementar el flujo de resolución simbólica en `app.py`
     - Implementar `_on_solve_symbolic()`: ejecutar `solve_symbolic` en hilo secundario (`threading.Thread`), activar `StatusBar.show_spinner()` y, al completarse, actualizar `MathPreview`, `StepByStepPanel` y `PlotView` en el hilo principal con `app.after(0, callback)`.
     - Si `SymbolicResult.error` está poblado, mostrar el error y ofrecer automáticamente la solución numérica.
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 6.1, 9.4, 9.5_
 
-  - [ ] 16.4 Implementar el flujo de resolución numérica en `app.py`
+  - [x] 16.4 Implementar el flujo de resolución numérica en `app.py`
     - Implementar `_on_solve_numeric()`: validar que `ConditionPanel` tiene `x₀`, `y₀`, `x_min`, `x_max`; ejecutar `solve_numeric` en hilo secundario; al completarse, actualizar `PlotView` y `StatusBar`.
     - Si `NumericResult.success` es `False`, mostrar el mensaje y sugerir ajustar el intervalo o las condiciones iniciales.
     - _Requirements: 4.1, 4.2, 4.4, 9.4, 9.5_
 
-  - [ ] 16.5 Implementar el flujo de cambio de modo de visualización en `app.py`
+  - [x] 16.5 Implementar el flujo de cambio de modo de visualización en `app.py`
     - Implementar `_on_mode_changed(mode: PlotMode)`: según el modo seleccionado, llamar a `PlotView.plot_solution`, `PlotView.plot_direction_field` o `PlotView.plot_surface_3d` con los datos del `AppState` actual.
     - _Requirements: 5.6, 5.7, 5.9, 5.10_
 
-  - [ ] 16.6 Implementar la carga de ejercicios desde `ExerciseLibrary` en `app.py`
+  - [x] 16.6 Implementar la carga de ejercicios desde `ExerciseLibrary` en `app.py`
     - Conectar `ExerciseLibrary.on_select` al controlador: cargar `exercise.equation_text` en `EquationInput`, cargar `exercise.initial_conditions` en `ConditionPanel` si existen, y disparar `_on_equation_changed`.
     - _Requirements: 8.2, 8.5_
 
-  - [ ] 16.7 Implementar los atajos de teclado globales en `app.py`
+  - [x] 16.7 Implementar los atajos de teclado globales en `app.py`
     - Implementar `_bind_shortcuts()`: ligar `Ctrl+D`, `Ctrl+I`, `Ctrl+Shift+I`, `Ctrl+E`, `Ctrl+Shift+S`, `Ctrl+P` a nivel de ventana para que, si el foco no está en `EquationInput`, se transfiera el foco e inserte el token.
     - _Requirements: 7.1, 7.4_
 
-- [ ] 17. Checkpoint — integración completa
+- [x] 17. Checkpoint — integración completa
   - Ejecutar `pytest tests/` (excluyendo `test_properties.py`) y verificar que todos los tests unitarios pasen. Lanzar la aplicación con `python app.py` y probar manualmente la carga de un ejercicio, la resolución simbólica y la visualización en los tres modos. Preguntar al usuario si surgen dudas.
 
-- [ ] 18. Tests de propiedades (Hypothesis)
-  - [ ] 18.1 Implementar la Propiedad 1 en `tests/test_properties.py`
+- [x] 18. Tests de propiedades (Hypothesis)
+  - [x] 18.1 Implementar la Propiedad 1 en `tests/test_properties.py`
     - **Property 1: Round-trip de parsing y renderizado LaTeX**
     - Para cualquier ecuación válida en `valid_ode_texts`, `parse_ode` debe retornar `rhs ≠ None` y `latex_str` no vacío.
     - **Validates: Requirements 1.1, 1.4, 2.1**
 
-  - [ ]* 18.2 Ejecutar test de Propiedad 1
+  - [x]* 18.2 Ejecutar test de Propiedad 1
     - Correr `pytest tests/test_properties.py::test_property_1_parse_roundtrip` con `max_examples=100`.
 
-  - [ ] 18.3 Implementar la Propiedad 2 en `tests/test_properties.py`
+  - [x] 18.3 Implementar la Propiedad 2 en `tests/test_properties.py`
     - **Property 2: Rechazo de entradas inválidas**
     - Para cualquier texto en `invalid_ode_texts`, `parse_ode` debe retornar `rhs = None` y `error ≠ None`.
     - **Validates: Requirements 1.3**
 
-  - [ ]* 18.4 Ejecutar test de Propiedad 2
+  - [x]* 18.4 Ejecutar test de Propiedad 2
     - Correr `pytest tests/test_properties.py::test_property_2_invalid_input_rejected` con `max_examples=100`.
 
-  - [ ] 18.5 Implementar la Propiedad 3 en `tests/test_properties.py`
+  - [x] 18.5 Implementar la Propiedad 3 en `tests/test_properties.py`
     - **Property 3: Solución simbólica satisface la EDO original**
     - Para cualquier `(rhs, tipo)` en `solvable_odes`, la solución general de `solve_symbolic` debe satisfacer la EDO original al sustituir y simplificar con SymPy (resultado idénticamente cero).
     - **Validates: Requirements 3.1, 3.2, 3.5**
 
-  - [ ]* 18.6 Ejecutar test de Propiedad 3
+  - [x]* 18.6 Ejecutar test de Propiedad 3
     - Correr `pytest tests/test_properties.py::test_property_3_symbolic_solution_satisfies_ode` con `max_examples=100`.
 
-  - [ ] 18.7 Implementar la Propiedad 4 en `tests/test_properties.py`
+  - [x] 18.7 Implementar la Propiedad 4 en `tests/test_properties.py`
     - **Property 4: Solución particular satisface condiciones iniciales**
     - Para cualquier `(rhs, tipo)` en `solvable_odes` y par `(x0, y0)` flotantes en `[-3, 3]`, la solución particular al evaluarse en `x=x0` debe dar `y0` con tolerancia ε < 1e-6.
     - **Validates: Requirements 3.3**
 
-  - [ ]* 18.8 Ejecutar test de Propiedad 4
+  - [x]* 18.8 Ejecutar test de Propiedad 4
     - Correr `pytest tests/test_properties.py::test_property_4_particular_solution_satisfies_ic` con `max_examples=100`.
 
-  - [ ] 18.9 Implementar la Propiedad 5 en `tests/test_properties.py`
+  - [x] 18.9 Implementar la Propiedad 5 en `tests/test_properties.py`
     - **Property 5: Solución numérica y cobertura mínima de puntos**
     - Para cualquier entrada en `numeric_odes`, `solve_numeric` exitoso debe tener `len(x_arr) >= 500`, `|x_arr[0] - x0| < 1e-9` e `|y_arr[0] - y0| < 1e-6`.
     - **Validates: Requirements 4.1, 4.3**
 
-  - [ ]* 18.10 Ejecutar test de Propiedad 5
+  - [x]* 18.10 Ejecutar test de Propiedad 5
     - Correr `pytest tests/test_properties.py::test_property_5_numeric_solution_coverage_and_ic` con `max_examples=100`.
 
-  - [ ] 18.11 Implementar la Propiedad 6 en `tests/test_properties.py`
+  - [x] 18.11 Implementar la Propiedad 6 en `tests/test_properties.py`
     - **Property 6: Integridad del catálogo de ejercicios**
     - Para cualquier ejercicio muestreado de `load_exercises()`: el catálogo total ≥ 15, cada ejercicio tiene `name`, `latex_str` y `description` no vacíos, y `equation_text` es parseable sin error.
     - **Validates: Requirements 8.1, 8.2, 8.3, 8.5**
 
-  - [ ]* 18.12 Ejecutar test de Propiedad 6
+  - [x]* 18.12 Ejecutar test de Propiedad 6
     - Correr `pytest tests/test_properties.py::test_property_6_exercise_catalog_integrity` con `max_examples=100`.
 
-  - [ ] 18.13 Implementar la Propiedad 7 en `tests/test_properties.py`
+  - [x] 18.13 Implementar la Propiedad 7 en `tests/test_properties.py`
     - **Property 7: Inserción de tokens mediante atajos de teclado**
     - Para cualquier `(key, (token, cursor_inside))` en `SHORTCUT_MAP`, `EquationInput.insert_token` debe insertar el token y, si `cursor_inside=True`, posicionar el cursor entre los paréntesis.
     - **Validates: Requirements 7.1, 7.2**
 
-  - [ ]* 18.14 Ejecutar test de Propiedad 7
+  - [x]* 18.14 Ejecutar test de Propiedad 7
     - Correr `pytest tests/test_properties.py::test_property_7_shortcut_inserts_token` con `max_examples=100`.
 
-  - [ ] 18.15 Implementar la Propiedad 8 en `tests/test_properties.py`
+  - [x] 18.15 Implementar la Propiedad 8 en `tests/test_properties.py`
     - **Property 8: Direction Field usa intervalo por defecto cuando faltan condiciones**
     - Para cualquier `rhs` en `valid_rhs_exprs`, `compute_direction_field_bounds(rhs, SolverConditions())` debe retornar exactamente `(-5.0, 5.0, -5.0, 5.0)`.
     - **Validates: Requirements 5.9**
 
-  - [ ]* 18.16 Ejecutar test de Propiedad 8
+  - [x]* 18.16 Ejecutar test de Propiedad 8
     - Correr `pytest tests/test_properties.py::test_property_8_direction_field_default_interval` con `max_examples=100`.
 
-  - [ ] 18.17 Implementar la Propiedad 9 en `tests/test_properties.py`
+  - [x] 18.17 Implementar la Propiedad 9 en `tests/test_properties.py`
     - **Property 9: Resolución mínima y etiquetas en visualizaciones**
     - Para cualquier llamada válida a `plot_surface_3d`: cuadrícula ≥ 50×50 puntos y ejes con etiquetas no vacías `x`, `y`, `z = f(x,y)`. Para `plot_solution` y `plot_direction_field`: ejes 2D con `xlabel` e `ylabel` no vacíos.
     - **Validates: Requirements 5.1, 5.10, 5.11**
 
-  - [ ]* 18.18 Ejecutar test de Propiedad 9
+  - [x]* 18.18 Ejecutar test de Propiedad 9
     - Correr `pytest tests/test_properties.py::test_property_9_surface_3d_resolution_and_labels` con `max_examples=100`.
 
-- [ ] 19. Exportación de gráficas *(Opcional — Requirement 11)*
-  - [ ]* 19.1 Implementar `ui/export_manager.py`
+- [x] 19. Exportación de gráficas *(Opcional — Requirement 11)*
+  - [x]* 19.1 Implementar `ui/export_manager.py`
     - Implementar `export_figure(fig: Figure) -> None` que abra `tkinter.filedialog.asksaveasfilename` con filtros PNG/JPEG/PDF.
     - Usar `matplotlib.backends.backend_pdf.PdfPages` para exportar a PDF y `figure.savefig(..., dpi=300)` para imágenes.
     - Si `Pillow` no está instalado, mostrar un error descriptivo con instrucciones de instalación en lugar de abortar.
@@ -293,7 +293,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Al completarse, llamar a `StatusBar.set_status` con la ruta del archivo guardado.
     - _Requirements: 11.1, 11.2, 11.3, 11.4_
 
-- [ ] 20. Checkpoint final — suite completa de tests
+- [x] 20. Checkpoint final — suite completa de tests
   - Ejecutar `pytest tests/` con todos los tests unitarios y de propiedades y asegurarse de que todos pasen. Preguntar al usuario si surgen dudas.
 
 ## Notas
