@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ode-calculator"
+version = "1.0.0"
+description = "Calculadora de EDOs de primer orden con solución simbólica, numérica y visualización"
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["ode", "ecuaciones diferenciales", "sympy", "tkinter", "matplotlib"]
+dependencies = [
+    "sympy==1.13.1",
+    "scipy==1.13.1",
+    "matplotlib==3.9.2",
+    "numpy==1.26.4",
+    "Pillow==13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "hypothesis==6.112.0",
+    "pytest==8.3.3",
+]
+
+[project.gui-scripts]
+ode-calculator = "app:main"
+
+[tool.setuptools]
+py-modules = ["app", "dependencies"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["data*", "math_engine*", "ui*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = [
+    "ignore::DeprecationWarning:matplotlib._mathtext",
+    "ignore::DeprecationWarning:matplotlib._fontconfig_pattern",
+    "ignore::DeprecationWarning:pyparsing",
+]
