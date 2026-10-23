@@ -293,7 +293,7 @@ Implementación incremental de la calculadora de EDOs de primer orden en Python 
     - Al completarse, llamar a `StatusBar.set_status` con la ruta del archivo guardado.
     - _Requirements: 11.1, 11.2, 11.3, 11.4_
 
-- [ ] 20. Checkpoint final — suite completa de tests
+- [x] 20. Checkpoint final — suite completa de tests
   - Ejecutar `pytest tests/` con todos los tests unitarios y de propiedades y asegurarse de que todos pasen. Preguntar al usuario si surgen dudas.
 
 ## Notas
