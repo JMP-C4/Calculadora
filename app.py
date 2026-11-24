@@ -2,6 +2,35 @@
 
 from __future__ import annotations
 
+
+def _ejecutar_streamlit_si_corresponde() -> bool:
+    """Delega en EDO-Lab cuando el archivo se ejecuta con Streamlit.
+
+    El repositorio conserva la interfaz Tk clásica para ejecuciones normales,
+    pero ``streamlit run app.py`` debe cargar la aplicación nueva sin importar
+    ``tkinter`` ni el motor antiguo.
+    """
+
+    if __name__ != "__main__":
+        return False
+    try:
+        from streamlit.runtime import exists
+    except Exception:
+        return False
+    if not exists():
+        return False
+    from ui.streamlit_app import main as _main_streamlit
+
+    _main_streamlit()
+    import streamlit as st
+
+    st.stop()
+    return True
+
+
+if _ejecutar_streamlit_si_corresponde():
+    raise SystemExit(0)
+
 import queue
 import threading
 import tkinter as tk

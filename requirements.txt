@@ -1,9 +1,21 @@
-sympy==1.13.1
-scipy==1.13.1
-matplotlib==3.9.2
-numpy==1.26.4
-hypothesis==6.112.0
-pytest==8.3.3
-# tkinter viene incluido en la biblioteca estándar de Python (no requiere instalación)
-# Exportación de gráficas (Requirement 11):
-Pillow==12.1.0
+# Núcleo matemático
+sympy>=1.13,<1.15
+scipy>=1.13,<2
+numpy>=1.26,<3
+
+# EDO-Lab: interfaz Streamlit, datos, incertidumbre e informes
+streamlit>=1.40,<2
+pandas>=2,<4
+plotly>=5,<8
+reportlab>=4,<6
+SALib>=1.4,<2
+openpyxl>=3,<4
+
+# Interfaz de escritorio y exportación
+matplotlib>=3.9,<4
+Pillow>=10,<13
+
+# Desarrollo y pruebas
+hypothesis>=6,<7
+pytest>=8,<9
+pytest-cov>=5,<7

@@ -4,40 +4,96 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ode-calculator"
-version = "1.1.1"
-description = "Calculadora de EDOs de primer orden con solución simbólica, numérica y visualización"
+version = "2.0.0"
+description = "Calculadora científica de EDOs de primer orden: clasificación multi-método, verificación, pasos y respaldo numérico"
 readme = "README.md"
 requires-python = ">=3.10"
-keywords = ["ode", "ecuaciones diferenciales", "sympy", "tkinter", "matplotlib"]
+license = { text = "MIT" }
+authors = [{ name = "ODE Calculator contributors" }]
+keywords = ["ode", "ecuaciones diferenciales", "sympy", "cientifico"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
 dependencies = [
-    "sympy==1.13.1",
-    "scipy==1.13.1",
-    "matplotlib==3.9.2",
-    "numpy==1.26.4",
-    "Pillow==12.1.0",
+    "sympy>=1.13,<1.15",
+    "scipy>=1.13,<2",
+    "numpy>=1.26,<3",
 ]
 
 [project.optional-dependencies]
+# La interfaz de escritorio necesita además Tk del sistema (python3-tk).
+desktop = [
+    "matplotlib>=3.9,<4",
+    "Pillow>=10,<13",
+]
+# La interfaz web usa solo la biblioteca estándar; se mantiene el extra por
+# claridad y para futuros clientes (por ejemplo, Pyodide).
+web = []
+# EDO-Lab: laboratorio Streamlit, datos, incertidumbre e informes.
+lab = [
+    "matplotlib>=3.9,<4",
+    "streamlit>=1.40,<2",
+    "pandas>=2,<4",
+    "plotly>=5,<8",
+    "reportlab>=4,<6",
+    "SALib>=1.4,<2",
+    "openpyxl>=3,<4",
+]
 dev = [
-    "hypothesis==6.112.0",
-    "pytest==8.3.3",
+    "hypothesis>=6,<7",
+    "pytest>=8,<9",
+    "pytest-cov>=5,<7",
 ]
 
+[project.scripts]
+ode-calculator-web = "apps.web.server:main"
+
 [project.gui-scripts]
-ode-calculator = "app:main"
+ode-calculator = "apps.desktop.app:main"
 
 [tool.setuptools]
 py-modules = ["app", "dependencies"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["data*", "math_engine*", "ui*"]
+include = ["odecalc*", "apps*", "core*", "data*", "math_engine*", "ui*"]
+
+[tool.setuptools.package-data]
+"apps.web" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "bank: banco de 100+ ejercicios (lento).",
+    "legacy: suite de la interfaz y motor antiguos.",
+    "slow: pruebas de rendimiento o de integración largas.",
+]
 filterwarnings = [
     "ignore::DeprecationWarning:matplotlib._mathtext",
     "ignore::DeprecationWarning:matplotlib._fontconfig_pattern",
     "ignore::DeprecationWarning:pyparsing",
+]
+
+[tool.coverage.run]
+source = ["odecalc"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 85
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
 ]
