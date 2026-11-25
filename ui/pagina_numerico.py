@@ -20,7 +20,9 @@ from core.tipos import EntradaInvalida
 
 from ui.componentes import (
     aviso_parametros,
+    lienzo,
     mensaje_error,
+    mostrar_ecuacion,
     sin_resultado,
     tarjeta,
     tema_actual,
@@ -114,12 +116,13 @@ def _tabla_comparacion(resultados) -> None:
     st.dataframe(filas, use_container_width=True, hide_index=True)
 
 
-def render() -> None:
-    titulo_pagina(
-        "Numérico",
-        "Compara métodos, mide el orden empírico, ejecuta un benchmark y detecta rigidez.",
-        icono="📐",
-    )
+def render(*, cabecera: bool = True) -> None:
+    if cabecera:
+        titulo_pagina(
+            "Numérico",
+            "Compara métodos, mide el orden empírico, ejecuta un benchmark y detecta rigidez.",
+            icono="activity",
+        )
     texto = st.session_state.get("ecuacion_input", "")
     if not texto.strip():
         sin_resultado()
@@ -136,8 +139,8 @@ def render() -> None:
     x_min = float(st.session_state.get("x_min_input", 0.0))
     x_max = float(st.session_state.get("x_max_input", 5.0))
 
-    with tarjeta("Problema de valor inicial", icono="📌"):
-        st.latex(ecuacion.latex)
+    with tarjeta("Problema de valor inicial", icono="pin"):
+        mostrar_ecuacion(ecuacion.latex)
         st.caption(
             f"Condición inicial y({x0:g}) = {y0:g}. "
             f"Intervalo de referencia x ∈ [{x_min:g}, {x_max:g}]."
@@ -148,7 +151,10 @@ def render() -> None:
             key="num_x_fin",
         )
         if float(x_fin) <= x0:
-            st.warning("El extremo debe ser mayor que x₀ para integrar hacia adelante.")
+            st.warning(
+                "El extremo debe ser mayor que x₀ para integrar hacia adelante.",
+                icon=None,
+            )
             return
         h = st.slider(
             "Paso h para métodos de paso fijo",
@@ -165,7 +171,7 @@ def render() -> None:
             key="num_metodos",
         )
         if not metodos:
-            st.info("Elige al menos un método.")
+            st.info("Elige al menos un método.", icon=None)
             return
 
     exacto = _exacto_actual()
@@ -243,8 +249,8 @@ def render() -> None:
 
     resultados = st.session_state.get("num_resultados")
     if resultados:
-        st.markdown("#### 📊 Comparación de trayectorias")
-        st.plotly_chart(_figura_metodos(resultados, exacto), use_container_width=True)
+        st.markdown("#### Comparación de trayectorias")
+        lienzo(_figura_metodos(resultados, exacto))
         _tabla_comparacion(resultados)
         errores = [item.error_max for item in resultados if item.error_max is not None]
         if errores:
@@ -255,14 +261,13 @@ def render() -> None:
 
     convergencia = st.session_state.get("num_convergencia")
     if convergencia is not None:
-        st.markdown("#### 📉 Orden empírico de convergencia")
-        st.plotly_chart(
+        st.markdown("#### Orden empírico de convergencia")
+        lienzo(
             figura_convergencia(
                 convergencia.filas,
                 convergencia.ordenes,
                 tema_oscuro=tema_actual(),
-            ),
-            use_container_width=True,
+            )
         )
         if convergencia.ordenes:
             columnas = st.columns(min(3, len(convergencia.ordenes)))
@@ -274,7 +279,7 @@ def render() -> None:
                         st.metric(
                             metodo,
                             f"{orden:.3f}",
-                            delta="✓ dentro de lo esperado" if valido else "fuera del rango",
+                            delta="dentro de lo esperado" if valido else "fuera del rango",
                             delta_color="normal" if valido else "inverse",
                         )
                 else:
@@ -296,11 +301,8 @@ def render() -> None:
 
     items = st.session_state.get("num_benchmark")
     if items:
-        st.markdown("#### ⏱️ Benchmark en vivo")
-        st.plotly_chart(
-            figura_benchmark(items, tema_oscuro=tema_actual()),
-            use_container_width=True,
-        )
+        st.markdown("#### Benchmark en vivo")
+        lienzo(figura_benchmark(items, tema_oscuro=tema_actual()))
         st.dataframe(
             [
                 {
@@ -319,11 +321,14 @@ def render() -> None:
 
     rigidez = st.session_state.get("num_rigidez")
     if rigidez is not None:
-        st.markdown("#### 🌡️ Diagnóstico de rigidez")
+        st.markdown("#### Diagnóstico de rigidez")
         if rigidez.rigida:
-            st.warning(rigidez.motivo + f" Método recomendado: {rigidez.metodo_recomendado}.")
+            st.warning(
+                rigidez.motivo + f" Método recomendado: {rigidez.metodo_recomendado}.",
+                icon=None,
+            )
         else:
-            st.success(rigidez.motivo)
+            st.success(rigidez.motivo, icon=None)
         columnas = st.columns(2)
         columnas[0].metric(
             "|∂f/∂y| máximo",

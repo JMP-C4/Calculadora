@@ -19,7 +19,10 @@ from core.tipos import DatosInvalidos
 
 from ui.componentes import (
     bloque_scroll,
+    lienzo,
     mensaje_error,
+    mostrar_ecuacion,
+    mostrar_texto,
     tarjeta,
     tema_actual,
     titulo_pagina,
@@ -62,7 +65,7 @@ def _cargar_fuente(archivo) -> None:
         )
         return
     _guardar_datos(datos, firma)
-    st.success("Datos cargados correctamente.")
+    st.success("Datos cargados correctamente.", icon=None)
 
 
 def _tabla_modelos(resultados) -> None:
@@ -133,15 +136,16 @@ def _residuales(resultado) -> go.Figure:
     return figura
 
 
-def render() -> None:
-    titulo_pagina(
-        "Datos",
-        "Carga observaciones, ajusta modelos de EDO y predice con bandas de confianza.",
-        icono="📊",
-    )
+def render(*, cabecera: bool = True) -> None:
+    if cabecera:
+        titulo_pagina(
+            "Datos",
+            "Carga observaciones, ajusta modelos de EDO y predice con bandas de confianza.",
+            icono="chart",
+        )
     columnas = st.columns([1.1, 1])
     with columnas[0]:
-        with tarjeta("Cargar datos", icono="📂"):
+        with tarjeta("Cargar datos", icono="folder"):
             ejemplo = st.selectbox(
                 "Ejemplo incluido",
                 options=list(_EJEMPLOS),
@@ -152,7 +156,7 @@ def render() -> None:
                 try:
                     datos = cargar_ejemplo(ejemplo)
                     _guardar_datos(datos, f"ejemplo:{ejemplo}")
-                    st.success(f"Ejemplo «{ejemplo}» cargado.")
+                    st.success(f"Ejemplo «{ejemplo}» cargado.", icon=None)
                 except Exception:
                     mensaje_error(
                         "No se pudo cargar el ejemplo.",
@@ -166,7 +170,7 @@ def render() -> None:
             if archivo is not None:
                 _cargar_fuente(archivo)
     with columnas[1]:
-        with tarjeta("Formato esperado", icono="📝"):
+        with tarjeta("Formato esperado", icono="book"):
             st.markdown(
                 """
 - Una columna de tiempo (`tiempo`, `t`, `x`, `fecha`…).
@@ -182,10 +186,10 @@ def render() -> None:
 
     datos = st.session_state.get("datos_ajuste")
     if datos is None:
-        st.info("Carga un ejemplo o un archivo para comenzar el ajuste.")
+        st.info("Carga un ejemplo o un archivo para comenzar el ajuste.", icon=None)
         return
 
-    st.markdown("#### 🔍 Vista previa")
+    st.markdown("#### Vista previa")
     with bloque_scroll(260):
         st.dataframe(
             {
@@ -195,7 +199,7 @@ def render() -> None:
             use_container_width=True,
         )
 
-    with tarjeta("Modelos candidatos", icono="🧩"):
+    with tarjeta("Modelos candidatos", icono="layers"):
         modelos = listar_modelos()
         seleccionados = st.multiselect(
             "Modelos a ajustar",
@@ -206,11 +210,11 @@ def render() -> None:
         )
         with st.expander("Descripción de los modelos", expanded=False):
             for modelo in modelos:
-                st.markdown(f"**{modelo.nombre}** — {modelo.descripcion}")
-                st.latex(modelo.ecuacion_latex)
+                mostrar_texto(f"**{modelo.nombre}** — {modelo.descripcion}")
+                mostrar_ecuacion(modelo.ecuacion_latex)
         if st.button("Ajustar modelos", key="datos_ajustar", type="primary"):
             if not seleccionados:
-                st.warning("Elige al menos un modelo.")
+                st.warning("Elige al menos un modelo.", icon=None)
             else:
                 with st.spinner("Integrando la EDO para cada modelo…"):
                     try:
@@ -233,12 +237,13 @@ def render() -> None:
     if mejor is not None:
         st.success(
             f"Mejor modelo por AIC: **{mejor.nombre}**. {mejor.resumen} "
-            "Un AIC menor indica mejor equilibrio entre ajuste y complejidad."
+            "Un AIC menor indica mejor equilibrio entre ajuste y complejidad.",
+            icon=None,
         )
     else:
-        st.warning("Ningún modelo logró un ajuste exitoso con estos datos.")
+        st.warning("Ningún modelo logró un ajuste exitoso con estos datos.", icon=None)
 
-    st.markdown("#### 📋 Comparación AIC/BIC")
+    st.markdown("#### Comparación AIC/BIC")
     _tabla_modelos(resultados)
     st.caption(
         "Regla práctica: diferencias de AIC menores que 2 son poco concluyentes; "
@@ -248,32 +253,28 @@ def render() -> None:
     if mejor is not None:
         columnas = st.columns(2)
         with columnas[0]:
-            st.markdown("#### 🎯 Parámetros estimados")
+            st.markdown("#### Parámetros estimados")
             _tabla_parametros(mejor)
         with columnas[1]:
-            st.markdown("#### 🔬 Sensibilidad local")
+            st.markdown("#### Sensibilidad local")
             if mejor.sensibilidad:
-                st.plotly_chart(
-                    figura_sensibilidad(mejor.sensibilidad, tema_oscuro=tema_actual()),
-                    use_container_width=True,
-                )
+                lienzo(figura_sensibilidad(mejor.sensibilidad, tema_oscuro=tema_actual()))
             else:
                 st.caption("No se pudo calcular la sensibilidad.")
 
-        st.plotly_chart(
+        lienzo(
             figura_ajuste(
                 datos,
                 resultados,
                 prediccion=st.session_state.get("prediccion_datos"),
                 tema_oscuro=tema_actual(),
-            ),
-            use_container_width=True,
+            )
         )
 
-        with st.expander("📈 Residuales del mejor modelo", expanded=False):
-            st.plotly_chart(_residuales(mejor), use_container_width=True)
+        with st.expander("Residuales del mejor modelo", expanded=False):
+            lienzo(_residuales(mejor))
 
-        with tarjeta("Predicción a futuro", icono="🔮"):
+        with tarjeta("Predicción a futuro", icono="chart"):
             columnas = st.columns(3)
             horizonte = columnas[0].number_input(
                 "Horizonte a predecir",
@@ -317,7 +318,10 @@ def render() -> None:
                         )
                         return
                 if prediccion is None:
-                    st.warning("La predicción no está disponible para este modelo.")
+                    st.warning(
+                        "La predicción no está disponible para este modelo.",
+                        icon=None,
+                    )
                 else:
                     st.session_state["prediccion_datos"] = prediccion
                     st.rerun()
@@ -327,14 +331,13 @@ def render() -> None:
                     f"Banda del {int(prediccion.nivel * 100)}% calculada por Monte Carlo "
                     "sobre la covarianza de los parámetros."
                 )
-                st.plotly_chart(
+                lienzo(
                     figura_ajuste(
                         datos,
                         [mejor],
                         prediccion=prediccion,
                         tema_oscuro=tema_actual(),
-                    ),
-                    use_container_width=True,
+                    )
                 )
 
 

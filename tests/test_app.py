@@ -36,7 +36,7 @@ def test_app_initial_state(app):
     assert app.state.current_equation_text == ""
     assert app.state.symbolic_result is None
     assert app.state.numeric_result is None
-    assert app.wm_minsize() == (1024, 768)
+    assert app.wm_minsize() == (720, 520)
 
 
 def test_equation_change_updates_parse_state(app):

@@ -12,12 +12,16 @@ from core.ejercicios import (
     guardar_perfil,
     recomendar_siguiente,
 )
+from core.notacion import formatear_texto
 from core.tipos import EntradaInvalida, SolucionNoDisponible
 
 from ui.componentes import (
     badge_estado,
     bloque_scroll,
     mensaje_error,
+    mostrar_ecuacion,
+    mostrar_texto,
+    notacion_actual,
     tarjeta,
     titulo_pagina,
 )
@@ -33,9 +37,10 @@ def _seccion_generador(perfil) -> None:
     recomendado = recomendar_siguiente(perfil)
     st.info(
         f"Recomendación del perfil: practica **{recomendado}**. "
-        "Se elige el tipo con menor precisión registrada."
+        "Se elige el tipo con menor precisión registrada.",
+        icon=None,
     )
-    with tarjeta("Generar un ejercicio", icono="🎯"):
+    with tarjeta("Generar un ejercicio", icono="target"):
         columnas = st.columns(3)
         tipo = columnas[0].selectbox(
             "Tipo de EDO",
@@ -81,39 +86,44 @@ def _seccion_generador(perfil) -> None:
     if ejercicio is None:
         st.caption("Genera un ejercicio para comenzar.")
         return
-    with tarjeta(f"Ejercicio · {ejercicio.resumen}", icono="📝"):
-        st.write(ejercicio.enunciado)
-        with st.expander("💡 Pista", expanded=False):
-            st.write(ejercicio.pista)
+    with tarjeta(f"Ejercicio · {ejercicio.resumen}", icono="file"):
+        mostrar_texto(ejercicio.enunciado)
+        with st.expander("Pista", expanded=False):
+            mostrar_texto(ejercicio.pista)
         for advertencia in ejercicio.advertencias:
-            st.caption(advertencia)
+            st.caption(formatear_texto(advertencia, notacion_actual()))
         columnas = st.columns(3)
         if columnas[0].button("Mostrar solución", key="aprender_mostrar_solucion"):
             st.session_state["mostrar_solucion_ejercicio"] = True
             st.rerun()
-        if columnas[1].button("✅ La resolví bien", key="aprender_bien"):
+        if columnas[1].button("La resolví bien", key="aprender_bien"):
             perfil.registrar(ejercicio.tipo, True, ecuacion=ejercicio.ecuacion)
             guardar_perfil(perfil)
-            st.success("¡Bien! Progreso guardado.")
+            st.success("Bien: progreso guardado.", icon=None)
             st.session_state["ejercicio_actual"] = None
             st.rerun()
-        if columnas[2].button("❌ Me equivoqué", key="aprender_mal"):
+        if columnas[2].button("Me equivoqué", key="aprender_mal"):
             perfil.registrar(ejercicio.tipo, False, ecuacion=ejercicio.ecuacion)
             guardar_perfil(perfil)
-            st.info("Registrado. La recomendación se ajustará a este tipo.")
+            st.info("Registrado. La recomendación se ajustará a este tipo.", icon=None)
             st.session_state["ejercicio_actual"] = None
             st.rerun()
         if st.session_state.get("mostrar_solucion_ejercicio"):
             st.markdown("**Solución certificada**")
-            st.latex(ejercicio.solucion_latex)
+            mostrar_ecuacion(ejercicio.solucion_latex)
             if ejercicio.certificado is not None:
                 badge_estado(ejercicio.certificado)
                 if ejercicio.certificado.dominio_valido:
-                    st.caption(f"Dominio: {ejercicio.certificado.dominio_valido}")
+                    st.caption(
+                        "Dominio: "
+                        + formatear_texto(
+                            ejercicio.certificado.dominio_valido, notacion_actual()
+                        )
+                    )
 
 
 def _seccion_corrector(perfil) -> None:
-    with tarjeta("Corrector de procedimiento", icono="🔍"):
+    with tarjeta("Corrector de procedimiento", icono="search"):
         st.caption(
             "Escribe una línea por paso. El corrector comprueba equivalencia "
             "entre pasos y consistencia con la EDO; señala el primer error y da "
@@ -161,36 +171,34 @@ def _seccion_corrector(perfil) -> None:
                 )
                 return
             st.session_state["corrector_resultado"] = resultado
-            if resultado.correcto:
-                perfil.registrar("corrector", True)
-                guardar_perfil(perfil)
-            else:
-                perfil.registrar("corrector", False)
-                guardar_perfil(perfil)
+            perfil.registrar("corrector", resultado.correcto)
+            guardar_perfil(perfil)
 
     resultado = st.session_state.get("corrector_resultado")
     if resultado is None:
         return
     if resultado.correcto:
-        st.success(resultado.mensaje)
+        st.success(formatear_texto(resultado.mensaje, notacion_actual()), icon=None)
         st.caption(f"Líneas verificadas: {resultado.lineas_verificadas}.")
     else:
         error = resultado.primer_error
-        st.error(resultado.mensaje)
+        st.error(formatear_texto(resultado.mensaje, notacion_actual()), icon=None)
         if error is not None:
             st.markdown(f"**Línea {error.linea}:** `{error.texto}`")
-            st.info(f"💡 Pista: {error.pista}")
+            st.info(
+                "Pista: " + formatear_texto(error.pista, notacion_actual()), icon=None
+            )
             st.caption(f"Tipo de error: {error.tipo}")
     with st.expander("Detalles de la revisión", expanded=False):
         with bloque_scroll(240):
             for detalle in resultado.detalles:
-                st.write(f"• {detalle}")
+                mostrar_texto(f"· {detalle}")
             if not resultado.detalles:
                 st.caption("Sin detalles adicionales.")
 
 
 def _seccion_progreso(perfil) -> None:
-    st.markdown("#### 📈 Progreso por tipo")
+    st.markdown("#### Progreso por tipo")
     columnas = st.columns(4)
     columnas[0].metric("Intentos totales", perfil.total)
     columnas[1].metric(
@@ -225,18 +233,18 @@ def _seccion_progreso(perfil) -> None:
         )
     st.dataframe(filas, use_container_width=True, hide_index=True)
 
-    with st.expander("🧾 Historial reciente", expanded=False):
+    with st.expander("Historial reciente", expanded=False):
         with bloque_scroll(260):
             if perfil.historial:
                 for entrada in reversed(perfil.historial[-30:]):
-                    estado = "✅" if entrada.get("correcto") else "❌"
+                    estado = "Correcto" if entrada.get("correcto") else "Incorrecto"
                     etiqueta = entrada.get("tipo", "—")
                     extra = entrada.get("ecuacion", "")
-                    st.write(f"{estado} **{etiqueta}** {extra}")
+                    mostrar_texto(f"**{estado}** · **{etiqueta}** {extra}")
             else:
                 st.caption("Todavía no hay intentos registrados.")
 
-    with st.expander("♻️ Reiniciar perfil", expanded=False):
+    with st.expander("Reiniciar perfil", expanded=False):
         confirmar = st.checkbox(
             "Confirmo que quiero borrar el progreso guardado",
             key="aprender_confirmar_reset",
@@ -247,18 +255,19 @@ def _seccion_progreso(perfil) -> None:
             perfil = PerfilEstudiante()
             guardar_perfil(perfil)
             st.session_state["perfil_estudiante"] = perfil
-            st.success("Perfil reiniciado.")
+            st.success("Perfil reiniciado.", icon=None)
             st.rerun()
 
 
-def render() -> None:
-    titulo_pagina(
-        "Aprender",
-        "Ejercicios certificados, corrección del procedimiento y progreso adaptativo.",
-        icono="🎓",
-    )
+def render(*, cabecera: bool = True) -> None:
+    if cabecera:
+        titulo_pagina(
+            "Aprender",
+            "Ejercicios certificados, corrección del procedimiento y progreso adaptativo.",
+            icono="book",
+        )
     perfil = _perfil()
-    pestañas = st.tabs(["🎯 Ejercicios", "🔍 Corrector", "📈 Progreso"])
+    pestañas = st.tabs(["Ejercicios", "Corrector", "Progreso"])
     with pestañas[0]:
         _seccion_generador(perfil)
     with pestañas[1]:

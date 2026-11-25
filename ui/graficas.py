@@ -20,6 +20,18 @@ _COLORES = (
     "#0891b2",
 )
 
+#: Modos compartidos por el selector de la cabecera y el lienzo.
+GRAFICAS = (
+    "Solución y(x)",
+    "Campo de direcciones",
+    "Isoclinas",
+    "Familia de curvas",
+    "Línea de fase",
+    "Puntos de equilibrio",
+    "Superficie 3D z = f(x,y)",
+)
+CLAVE_GRAFICA = "edo_grafica_activa"
+
 
 def _plantilla(tema_oscuro: bool = False) -> str:
     return "plotly_dark" if tema_oscuro else "plotly_white"
@@ -665,11 +677,78 @@ def figura_sensibilidad(sensibilidad: dict[str, float], *, tema_oscuro: bool = F
     )
 
 
+def figura_familia(
+    curvas: Iterable[tuple[np.ndarray, np.ndarray, str]],
+    *,
+    tema_oscuro: bool = False,
+    altura: int = 430,
+) -> go.Figure:
+    """Familia de soluciones al variar la constante de integración."""
+
+    figura = go.Figure()
+    for indice, (xs, ys, etiqueta) in enumerate(curvas):
+        figura.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="lines",
+                name=etiqueta,
+                line=dict(
+                    color=_COLORES[indice % len(_COLORES)],
+                    width=2.0,
+                ),
+            )
+        )
+    return _acabado(
+        figura,
+        titulo="Familia de curvas solución",
+        tema_oscuro=tema_oscuro,
+        altura=altura,
+    )
+
+
+def figura_superficie(
+    datos,
+    *,
+    tema_oscuro: bool = False,
+    altura: int = 460,
+) -> go.Figure:
+    """Superficie ``z = f(x, y)`` a partir de la malla de isóclinas."""
+
+    figura = go.Figure(
+        go.Surface(
+            x=datos.x,
+            y=datos.y,
+            z=datos.z,
+            colorscale="RdBu",
+            opacity=0.92,
+            showscale=False,
+        )
+    )
+    figura.update_layout(
+        template=_plantilla(tema_oscuro),
+        title="Superficie z = f(x, y)",
+        height=altura,
+        margin=dict(l=0, r=0, t=50, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        scene=dict(
+            xaxis_title="x",
+            yaxis_title="y",
+            zaxis_title="z = f(x, y)",
+        ),
+    )
+    return figura
+
+
 __all__ = [
+    "CLAVE_GRAFICA",
+    "GRAFICAS",
     "figura_solucion",
     "figura_campo_direcciones",
     "figura_fase",
     "figura_isoclinas",
+    "figura_familia",
+    "figura_superficie",
     "figura_bifurcacion",
     "figura_convergencia",
     "figura_benchmark",

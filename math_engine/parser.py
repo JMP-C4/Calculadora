@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 import sympy as sp
 
+from odecalc.parsing.parser import latex_to_plain
+
 x = sp.Symbol("x", real=True)
 y = sp.Function("y")(x)
 
@@ -88,6 +90,13 @@ def parse_ode(text: str) -> ParseResult:
         return _error("La ecuación debe ser una cadena de texto.")
 
     raw = text.strip()
+    if not raw:
+        return _error("La ecuación está vacía. Ingresa una EDO de primer orden.")
+
+    try:
+        raw = latex_to_plain(raw).strip()
+    except ValueError as exc:
+        return _error(str(exc))
     if not raw:
         return _error("La ecuación está vacía. Ingresa una EDO de primer orden.")
 

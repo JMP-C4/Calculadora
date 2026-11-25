@@ -16,11 +16,17 @@ from core.cualitativo import (
 from core.parser import parsear, parsear_parametrizada
 from core.tipos import EntradaInvalida
 
+from core.notacion import formatear_texto
+
 from ui.componentes import (
     aviso_parametros,
     bloque_scroll,
+    lienzo,
     mensaje_error,
+    mostrar_ecuacion,
     mostrar_existencia,
+    mostrar_texto,
+    notacion_actual,
     sin_resultado,
     tarjeta,
     tema_actual,
@@ -31,7 +37,7 @@ from ui.graficas import figura_bifurcacion, figura_fase, figura_isoclinas
 
 def _tabla_equilibrios(puntos) -> None:
     if not puntos:
-        st.info("No se encontraron equilibrios reales en el rango elegido.")
+        st.info("No se encontraron equilibrios reales en el rango elegido.", icon=None)
         return
     filas = [
         {
@@ -46,7 +52,7 @@ def _tabla_equilibrios(puntos) -> None:
 
 
 def _seccion_equilibrios(rhs) -> None:
-    st.markdown("#### ⚖️ Equilibrios y estabilidad")
+    st.markdown("#### Equilibrios y estabilidad")
     columnas = st.columns(2)
     y_min = columnas[0].number_input(
         "y mínimo para buscar equilibrios", value=-5.0, key="cual_y_min"
@@ -55,7 +61,10 @@ def _seccion_equilibrios(rhs) -> None:
         "y máximo para buscar equilibrios", value=10.0, key="cual_y_max"
     )
     if y_min >= y_max:
-        st.warning("El rango de y no es válido: el mínimo debe ser menor que el máximo.")
+        st.warning(
+            "El rango de y no es válido: el mínimo debe ser menor que el máximo.",
+            icon=None,
+        )
         return
     puntos = equilibrios(rhs, y_min=float(y_min), y_max=float(y_max))
     st.caption(resumen_cualitativo(rhs))
@@ -67,15 +76,15 @@ def _seccion_equilibrios(rhs) -> None:
         y_max=float(y_max),
         tema_oscuro=tema_actual(),
     )
-    st.plotly_chart(figura, use_container_width=True)
+    lienzo(figura, key="cual_fase_grafico")
     st.caption(
-        "🟢 estable: las trayectorias se acercan. 🔴 inestable: se alejan. "
-        "🟡 semiestable o indeterminado."
+        "Estable: las trayectorias se acercan · Inestable: se alejan · "
+        "Semiestable o indeterminado: depende del lado desde el que se aproxime."
     )
 
 
 def _seccion_isoclinas(rhs, x_min: float, x_max: float) -> None:
-    st.markdown("#### 🗺️ Isóclinas")
+    st.markdown("#### Isóclinas")
     valores = st.multiselect(
         "Valores de k para las isóclinas f(x, y) = k",
         options=[-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0],
@@ -83,10 +92,10 @@ def _seccion_isoclinas(rhs, x_min: float, x_max: float) -> None:
         key="cual_isoclinas",
     )
     if not valores:
-        st.info("Elige al menos un valor para dibujar isóclinas.")
+        st.info("Elige al menos un valor para dibujar isóclinas.", icon=None)
         return
     if x_min >= x_max:
-        st.warning("El intervalo de x no es válido.")
+        st.warning("El intervalo de x no es válido.", icon=None)
         return
     with st.spinner("Calculando isóclinas…"):
         try:
@@ -104,15 +113,15 @@ def _seccion_isoclinas(rhs, x_min: float, x_max: float) -> None:
                 "Prueba con otros valores de k o revisa la ecuación.",
             )
             return
-    st.plotly_chart(
+    lienzo(
         figura_isoclinas(datos, tema_oscuro=tema_actual()),
-        use_container_width=True,
+        key="cual_isoclinas_grafico",
     )
     st.caption(datos.nota)
 
 
 def _seccion_bifurcacion() -> None:
-    st.markdown("#### 🌀 Bifurcación con un parámetro")
+    st.markdown("#### Bifurcación con un parámetro")
     st.caption(
         "Estudia una familia y' = f(y; μ). El motor calcula los equilibrios y su "
         "estabilidad para cada valor del parámetro."
@@ -131,7 +140,7 @@ def _seccion_bifurcacion() -> None:
     if enviado:
         st.session_state["familia_bifurcacion"] = familia
         if mu_min >= mu_max:
-            st.warning("El rango de μ no es válido.")
+            st.warning("El rango de μ no es válido.", icon=None)
             return
         try:
             parametrizada = parsear_parametrizada(familia, "mu")
@@ -148,10 +157,10 @@ def _seccion_bifurcacion() -> None:
             )
             return
         if not puntos:
-            st.info("No se encontraron equilibrios reales en ese rango.")
+            st.info("No se encontraron equilibrios reales en ese rango.", icon=None)
             return
         figura = figura_bifurcacion(puntos, tema_oscuro=tema_actual())
-        st.plotly_chart(figura, use_container_width=True)
+        lienzo(figura, key="cual_bifurcacion_grafico")
         filas = [
             {
                 "μ": f"{punto.parametro:.4g}",
@@ -164,12 +173,13 @@ def _seccion_bifurcacion() -> None:
             st.dataframe(filas, use_container_width=True, hide_index=True)
 
 
-def render() -> None:
-    titulo_pagina(
-        "Cualitativo",
-        "Equilibrios, estabilidad, línea de fase, isóclinas y bifurcaciones.",
-        icono="🧭",
-    )
+def render(*, cabecera: bool = True) -> None:
+    if cabecera:
+        titulo_pagina(
+            "Cualitativo",
+            "Equilibrios, estabilidad, línea de fase, isóclinas y bifurcaciones.",
+            icono="compass",
+        )
     resultado = st.session_state.get("resultado")
     texto = st.session_state.get("ecuacion_input", "")
     if not texto.strip():
@@ -183,23 +193,27 @@ def render() -> None:
         mensaje_error(str(exc))
         return
 
-    with tarjeta("Ecuación de trabajo", icono="📌"):
-        st.latex(ecuacion.latex)
+    with tarjeta("Ecuación de trabajo", icono="pin"):
+        mostrar_ecuacion(ecuacion.latex)
         if es_autonoma(ecuacion.rhs):
-            st.success("La EDO es autónoma: y' = f(y).")
+            st.success(
+                formatear_texto("La EDO es autónoma: y' = f(y).", notacion_actual()),
+                icon=None,
+            )
         else:
             st.info(
                 "La EDO depende explícitamente de x; los equilibrios y la línea "
                 "de fase se definen para ecuaciones autónomas. Puedes explorar "
-                "las isóclinas y el campo de direcciones."
+                "las isóclinas y el campo de direcciones.",
+                icon=None,
             )
 
     if resultado is not None and resultado.ecuacion_texto == texto:
-        with st.expander("🔎 Existencia y unicidad del PVI actual", expanded=False):
+        with st.expander("Existencia y unicidad del PVI actual", expanded=False):
             mostrar_existencia(resultado.existencia)
-        with st.expander("♾️ Comportamiento asintótico", expanded=False):
+        with st.expander("Comportamiento asintótico", expanded=False):
             comportamiento = comportamiento_asintotico(resultado)
-            st.write(comportamiento.texto)
+            mostrar_texto(comportamiento.texto)
 
     if es_autonoma(ecuacion.rhs):
         _seccion_equilibrios(ecuacion.rhs)
@@ -210,10 +224,11 @@ def render() -> None:
     else:
         x_min = float(st.session_state.get("x_min_input", -5.0))
         x_max = float(st.session_state.get("x_max_input", 5.0))
-    with st.expander("🗺️ Isóclinas y curvas de nivel", expanded=False):
+    with st.expander("Isóclinas y curvas de nivel", expanded=False):
         _seccion_isoclinas(ecuacion.rhs, float(x_min), float(x_max))
 
-    _seccion_bifurcacion()
+    with st.expander("Bifurcación con un parámetro", expanded=False):
+        _seccion_bifurcacion()
 
 
 __all__ = ["render"]

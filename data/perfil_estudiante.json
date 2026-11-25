@@ -1,5 +1,20 @@
 {
-  "aciertos": {},
-  "errores": {},
-  "historial": []
+  "aciertos": {
+    "separable": 1
+  },
+  "errores": {
+    "separable": 1
+  },
+  "historial": [
+    {
+      "correcto": true,
+      "ecuacion": "y' = 3*x^2*y",
+      "tipo": "separable"
+    },
+    {
+      "correcto": false,
+      "ecuacion": "y' = 3*x^2*y",
+      "tipo": "separable"
+    }
+  ]
 }

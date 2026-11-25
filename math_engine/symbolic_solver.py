@@ -89,6 +89,52 @@ def _satisfies_condition(
     return abs(value - complex(y0)) < 1e-6
 
 
+def _branch_variants(expression: sp.Expr):
+    """Genera la rama principal y las ramas con la raíz cuadrada invertida.
+
+    ``dsolve`` devuelve una sola rama de una solución con ``sqrt``; la otra
+    rama se obtiene negando cada raíz.  Sin esto, una condición inicial que
+    cae en la rama opuesta no encontraría solución particular.
+    """
+
+    yield expression
+    roots = [atom for atom in expression.atoms(sp.Pow) if atom.exp == sp.Rational(1, 2)]
+    for root in sorted(roots, key=str):
+        yield expression.replace(root, -root)
+
+
+def _fit_expression(expression: sp.Expr, x0: float, y0: float) -> sp.Expr | None:
+    """Ajusta una expresión simbólica a la condición inicial, si es posible."""
+
+    constants = [
+        symbol
+        for symbol in expression.free_symbols
+        if symbol != x and getattr(symbol, "is_Symbol", False)
+    ]
+
+    if not constants:
+        if _satisfies_condition(expression, {}, x0, y0):
+            return expression
+        return None
+
+    constant = constants[0]
+    # Primero se intenta con ``Float`` (rápido) y solo si falla se repite con
+    # valores exactos: ``sp.solve`` puede devolver una lista vacía con
+    # coeficientes flotantes aunque la solución exista.
+    for cx, cy in ((x0, y0), (sp.Rational(x0), sp.Rational(y0))):
+        equation = sp.Eq(expression.subs(x, cx), cy)
+        try:
+            solutions = sp.solve(equation, constant)
+        except Exception:
+            solutions = []
+
+        for candidate in solutions:
+            substitution = {constant: candidate}
+            if _satisfies_condition(expression, substitution, x0, y0):
+                return sp.simplify(expression.subs(substitution))
+    return None
+
+
 def _apply_conditions(
     generals: tuple[sp.Eq, ...],
     ode: sp.Eq,
@@ -106,29 +152,10 @@ def _apply_conditions(
         pass
 
     for general in generals:
-        expression = general.rhs
-        constants = [
-            symbol
-            for symbol in expression.free_symbols
-            if symbol != x and getattr(symbol, "is_Symbol", False)
-        ]
-
-        if not constants:
-            if _satisfies_condition(expression, {}, x0, y0):
-                return general
-            continue
-
-        constant = constants[0]
-        equation = sp.Eq(expression.subs(x, x0), y0)
-        try:
-            solutions = sp.solve(equation, constant)
-        except Exception:
-            solutions = []
-
-        for candidate in solutions:
-            substitution = {constant: candidate}
-            if _satisfies_condition(expression, substitution, x0, y0):
-                return sp.Eq(y, sp.simplify(expression.subs(substitution)))
+        for expression in _branch_variants(general.rhs):
+            fitted = _fit_expression(expression, x0, y0)
+            if fitted is not None:
+                return sp.Eq(y, fitted)
 
     try:
         raw = sp.dsolve(ode, y, ics={y.subs(x, x0): y0})

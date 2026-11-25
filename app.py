@@ -87,13 +87,18 @@ class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("ODE Calculator — Ecuaciones diferenciales de primer orden")
-        self.geometry("1280x820")
-        self.minsize(1024, 768)
+        ancho = min(1280, max(760, int(self.winfo_screenwidth() * 0.78)))
+        alto = min(860, max(560, int(self.winfo_screenheight() * 0.82)))
+        self.geometry(f"{ancho}x{alto}")
+        self.minsize(720, 520)
 
         self.state = AppState()
         self._busy = False
         self._spinner_job: str | None = None
         self._result_queue: queue.Queue = queue.Queue()
+        self._compacto = False
+        self._compacto_automatico = False
+        self._anchos_etiquetas: dict[tk.Misc, int] = {}
 
         self._configure_styles()
         self._build_layout()
@@ -128,15 +133,17 @@ class App(tk.Tk):
         main.add(left, weight=0)
         main.add(right, weight=1)
         self._main_pane = main
+        self._left_pane = left
+        self._right_pane = right
 
-        ttk.Label(left, text="ODE Calculator", style="Title.TLabel").pack(
-            anchor="w", pady=(0, 2)
-        )
-        ttk.Label(
+        self._titulo_app = ttk.Label(left, text="ODE Calculator", style="Title.TLabel")
+        self._titulo_app.pack(anchor="w", pady=(0, 2))
+        self._lema_app = ttk.Label(
             left,
             text="Ecuaciones diferenciales de primer orden",
             style="Hint.TLabel",
-        ).pack(anchor="w", pady=(0, 8))
+        )
+        self._lema_app.pack(anchor="w", pady=(0, 8))
 
         self.equation_input = EquationInput(left, on_change=self._on_equation_changed)
         self.equation_input.pack(fill="x", pady=(0, 6))
@@ -188,12 +195,62 @@ class App(tk.Tk):
         self.plot_view.on_mode_change = self._on_mode_changed
         self.state.plot_mode = self.plot_view.current_mode
 
-        self.status_bar = StatusBar(self)
-        self.status_bar.grid(row=1, column=0, sticky="ew", padx=8, pady=(4, 8))
+        pie = ttk.Frame(self)
+        pie.grid(row=1, column=0, sticky="ew", padx=8, pady=(4, 8))
+        pie.columnconfigure(0, weight=1)
+        self.status_bar = StatusBar(pie)
+        self.status_bar.grid(row=0, column=0, sticky="ew")
+        self.compact_toggle = ttk.Button(
+            pie,
+            text="Ocultar controles",
+            command=self._alternar_compacto,
+        )
+        self.compact_toggle.grid(row=0, column=1, padx=(6, 0))
         self.status_bar.set_status("Listo. Escribe una EDO o elige un ejercicio.")
         self.plot_view.on_export_status = self.status_bar.set_status
 
+        self.bind("<Configure>", self._al_redimensionar)
+
     # -------------------------------------------------------------- helpers
+    def _al_redimensionar(self, event: object) -> None:
+        """Contrae el inspector cuando la ventana no llega a dos columnas."""
+
+        if getattr(event, "widget", None) is not self:
+            return
+        ancho = max(int(getattr(event, "width", 0) or 0), self.winfo_width())
+        if ancho <= 1:
+            return
+        compacto = ancho < 900
+        if compacto != self._compacto_automatico:
+            self._compacto_automatico = compacto
+            self._aplicar_compacto(compacto)
+        self._actualizar_wraplength(ancho)
+
+    def _actualizar_wraplength(self, ancho: int) -> None:
+        ancho_panel = max(260, ancho // 3 - 24) if not self._compacto else max(320, ancho - 48)
+        for etiqueta in (self._titulo_app, self._lema_app):
+            if self._anchos_etiquetas.get(etiqueta) != ancho_panel:
+                etiqueta.configure(wraplength=ancho_panel)
+                self._anchos_etiquetas[etiqueta] = ancho_panel
+
+    def _aplicar_compacto(self, compacto: bool) -> None:
+        if compacto == self._compacto:
+            return
+        self._compacto = compacto
+        if compacto:
+            if self._main_pane.panes():
+                self._main_pane.forget(self._left_pane)
+            self.compact_toggle.configure(text="Mostrar controles")
+        else:
+            if str(self._left_pane) not in self._main_pane.panes():
+                self._main_pane.insert(0, self._left_pane, weight=0)
+            sash = min(320, max(260, self.winfo_width() // 3))
+            self._main_pane.sashpos(0, sash)
+            self.compact_toggle.configure(text="Ocultar controles")
+        self._actualizar_wraplength(max(self.winfo_width(), 720))
+
+    def _alternar_compacto(self) -> None:
+        self._aplicar_compacto(not self._compacto)
     def _poll_results(self) -> None:
         try:
             while True:

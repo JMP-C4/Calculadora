@@ -6,8 +6,54 @@ Los nombres de las estrategias coinciden con los usados en ``tasks.md`` y
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
+import pytest
 import sympy as sp
 from hypothesis import strategies as st
+
+
+def _tk_interfaces_available() -> bool:
+    """Comprueba Tk y el backend de Matplotlib que usa la suite antigua."""
+
+    if importlib.util.find_spec("tkinter") is None:
+        return False
+    try:
+        import tkinter  # noqa: F401
+        from PIL import ImageTk  # noqa: F401
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg  # noqa: F401
+    except Exception:  # pragma: no cover - entorno sin Tk/Pillow completo
+        return False
+    return True
+
+
+# La suite antigua importa tkinter y Matplotlib-Tk a nivel de módulo.  Si Tk,
+# Pillow con ImageTk o el backend no están disponibles (CI mínima, contenedores)
+# se omite en lugar de fallar durante la recolección.
+if not _tk_interfaces_available():  # pragma: no cover
+    collect_ignore_glob = [
+        "test_app.py",
+        "test_condition_panel.py",
+        "test_equation_input.py",
+        "test_exercise_library.py",
+        "test_exercises.py",
+        "test_export_manager.py",
+        "test_math_preview.py",
+        "test_plot_view.py",
+        "test_properties.py",
+        "test_status_bar.py",
+        "test_step_by_step_panel.py",
+    ]
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Marca como ``legacy`` los tests que viven en ``tests/`` directamente."""
+
+    legacy_root = Path(__file__).parent
+    for item in items:
+        if Path(str(item.fspath)).parent == legacy_root:
+            item.add_marker(pytest.mark.legacy)
 
 x = sp.Symbol("x", real=True)
 y = sp.Function("y")(x)

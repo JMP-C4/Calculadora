@@ -16,7 +16,15 @@ from core.incertidumbre import (
 from core.parser import parsear_con_parametros
 from core.tipos import EntradaInvalida, SolucionNoDisponible
 
-from ui.componentes import mensaje_error, sin_resultado, tarjeta, tema_actual, titulo_pagina
+from ui.componentes import (
+    lienzo,
+    mensaje_error,
+    mostrar_ecuacion,
+    sin_resultado,
+    tarjeta,
+    tema_actual,
+    titulo_pagina,
+)
 from ui.graficas import figura_monte_carlo, figura_sobol
 
 
@@ -80,12 +88,13 @@ def _control_distribucion(
         )
 
 
-def render() -> None:
-    titulo_pagina(
-        "Incertidumbre",
-        "Propaga la incertidumbre de parámetros y condiciones iniciales; mide sensibilidad global.",
-        icono="🎲",
-    )
+def render(*, cabecera: bool = True) -> None:
+    if cabecera:
+        titulo_pagina(
+            "Incertidumbre",
+            "Propaga la incertidumbre de parámetros y condiciones iniciales; mide sensibilidad global.",
+            icono="shield",
+        )
     texto = st.session_state.get("ecuacion_input", "")
     if not texto.strip():
         sin_resultado()
@@ -108,8 +117,8 @@ def render() -> None:
         mensaje_error("El intervalo no es válido.")
         return
 
-    with tarjeta("Ecuación y fuentes de incertidumbre", icono="📌"):
-        st.latex(ecuacion.latex)
+    with tarjeta("Ecuación y fuentes de incertidumbre", icono="pin"):
+        mostrar_ecuacion(ecuacion.latex)
         if nombres:
             st.caption(
                 "Parámetros detectados: " + ", ".join(nombres) + ". "
@@ -118,13 +127,14 @@ def render() -> None:
         else:
             st.info(
                 "La ecuación no tiene parámetros simbólicos; puedes estudiar "
-                "la incertidumbre de la condición inicial y₀."
+                "la incertidumbre de la condición inicial y₀.",
+                icon=None,
             )
         st.caption(
             f"PVI base: y({x0:g}) = {y0:g}, x ∈ [{x_min:g}, {x_max:g}]."
         )
 
-    with tarjeta("Distribuciones", icono="🎛️"):
+    with tarjeta("Distribuciones", icono="sliders"):
         defectos = distribuciones_por_defecto(ecuacion.rhs)
         distribuciones = {
             nombre: _control_distribucion(nombre, defectos[nombre], clave=f"inci_{nombre}")
@@ -159,7 +169,7 @@ def render() -> None:
                 maximo=float(y0 + desviacion_y0) if tipo_y0 == "uniforme" else None,
             )
 
-    with tarjeta("Simulación Monte Carlo", icono="🌀"):
+    with tarjeta("Simulación Monte Carlo", icono="activity"):
         columnas = st.columns(3)
         n_muestras = columnas[0].slider(
             "Muestras", min_value=50, max_value=1500, value=300, step=50, key="inci_muestras"
@@ -207,10 +217,7 @@ def render() -> None:
         columnas[1].metric("Éxito", f"{resultado_mc.porcentaje_exito:.1f}%")
         columnas[2].metric("Semilla", resultado_mc.semilla)
         columnas[3].metric("Banda", f"{int(resultado_mc.nivel * 100)}%")
-        st.plotly_chart(
-            figura_monte_carlo(resultado_mc, tema_oscuro=tema_actual()),
-            use_container_width=True,
-        )
+        lienzo(figura_monte_carlo(resultado_mc, tema_oscuro=tema_actual()))
         for nota in resultado_mc.notas:
             st.caption(nota)
         st.caption(
@@ -218,11 +225,14 @@ def render() -> None:
             "los cálculos son deterministas."
         )
 
-    st.markdown("#### 🌐 Sensibilidad global (Sobol)")
+    st.markdown("#### Sensibilidad global (Sobol)")
     if not nombres:
-        st.info("Sobol necesita al menos un parámetro simbólico en la ecuación.")
+        st.info(
+            "Sobol necesita al menos un parámetro simbólico en la ecuación.",
+            icon=None,
+        )
         return
-    with tarjeta("Índices de Sobol", icono="🧪"):
+    with tarjeta("Índices de Sobol", icono="layers"):
         st.caption(
             "S1 mide el efecto directo de cada parámetro; ST incluye sus "
             "interacciones. Se evalúa y(x_final) con muestreo de Saltelli."
@@ -260,7 +270,10 @@ def render() -> None:
                 limites[nombre] = (float(bajo), float(alto))
         if st.button("Calcular índices de Sobol", key="sobol_ejecutar"):
             if any(bajo >= alto for bajo, alto in limites.values()):
-                st.warning("Cada límite inferior debe ser menor que su máximo.")
+                st.warning(
+                    "Cada límite inferior debe ser menor que su máximo.",
+                    icon=None,
+                )
                 return
             with st.spinner("Muestreando y evaluando el modelo…"):
                 try:
@@ -286,10 +299,7 @@ def render() -> None:
 
     indices = st.session_state.get("sobol_resultado")
     if indices is not None:
-        st.plotly_chart(
-            figura_sobol(indices, tema_oscuro=tema_actual()),
-            use_container_width=True,
-        )
+        lienzo(figura_sobol(indices, tema_oscuro=tema_actual()))
         st.dataframe(
             [
                 {

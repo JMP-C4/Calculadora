@@ -15,6 +15,7 @@ from sympy.parsing.sympy_parser import parse_expr
 
 from odecalc.parsing import parse_ode
 from odecalc.parsing import parser as _motor_parser
+from odecalc.parsing.parser import _separar_dominio
 from odecalc.symbols import DY, X, Y
 
 from core.tipos import EntradaInvalida, Ecuacion
@@ -43,8 +44,6 @@ def _sugerencia(texto: str) -> str:
     """Propone una corrección concreta para los errores más habituales."""
 
     sugerencias: list[str] = []
-    if re.search(r"\d\s*[A-Za-z(]", texto) and "*" not in texto:
-        sugerencias.append("Parece que falta un `*`: ¿quisiste escribir `2*x`?")
     if "'" in texto and "dy/dx" not in texto.lower() and "y'" not in texto:
         sugerencias.append("Para la derivada usa `y'` o `dy/dx`.")
     if texto.count("(") != texto.count(")"):
@@ -130,7 +129,7 @@ def parsear_con_parametros(texto: str) -> Ecuacion:
 
     if not isinstance(texto, str) or not texto.strip():
         raise EntradaInvalida("Escribe una ecuación diferencial para comenzar.")
-    preparado = _normalizar_derivadas(texto.strip())
+    preparado, _dominio = _separar_dominio(_normalizar_derivadas(texto.strip()))
     if not _CARACTERES_PERMITIDOS.match(preparado):
         raise EntradaInvalida(
             "La ecuación contiene caracteres no permitidos. Usa sólo números, "
@@ -228,13 +227,19 @@ def parsear_con_parametros(texto: str) -> Ecuacion:
         lineal = False
     return Ecuacion(
         texto=texto.strip(),
-        latex=sp.latex(sp.Eq(DY, rhs_expr)),
+        latex=_latex_derivada(rhs_expr),
         rhs=rhs_expr,
         parsed=None,
         es_autonoma=not rhs_expr.has(X),
         es_lineal=lineal,
         parametros=tuple(parametros),
     )
+
+
+def _latex_derivada(rhs: sp.Expr) -> str:
+    """Etiqueta visible de la EDO, sin exponer el símbolo interno ``Dy``."""
+
+    return rf"\frac{{dy}}{{dx}} = {sp.latex(rhs)}"
 
 
 def _normalizar_derivadas(texto: str) -> str:
@@ -265,7 +270,7 @@ def parsear_parametrizada(
     if parametro in {"x", "y", "Dy"}:
         raise EntradaInvalida("El parámetro no puede llamarse x, y ni Dy.")
 
-    preparado = _normalizar_derivadas(texto.strip())
+    preparado, _dominio = _separar_dominio(_normalizar_derivadas(texto.strip()))
     if not _CARACTERES_PERMITIDOS.match(preparado):
         raise EntradaInvalida(
             "La familia contiene caracteres no permitidos. Usa sólo números, "
@@ -356,7 +361,7 @@ def parsear_parametrizada(
 
     return EcuacionParametrizada(
         texto=texto.strip(),
-        latex=sp.latex(sp.Eq(DY, rhs_expr)),
+        latex=_latex_derivada(rhs_expr),
         rhs=rhs_expr,
         parametro=parametro_simbolo,
         parametro_nombre=parametro,

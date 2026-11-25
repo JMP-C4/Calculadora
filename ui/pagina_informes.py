@@ -12,21 +12,29 @@ from core.informes import (
 )
 from core.tipos import SolucionNoDisponible
 
-from ui.componentes import mensaje_error, mostrar_certificado, mostrar_solucion, sin_resultado, tarjeta, titulo_pagina
+from ui.componentes import (
+    mensaje_error,
+    mostrar_certificado,
+    mostrar_solucion,
+    sin_resultado,
+    tarjeta,
+    titulo_pagina,
+)
 
 
-def render() -> None:
-    titulo_pagina(
-        "Informes",
-        "Genera un documento con enunciado, procedimiento, gráfica, errores y certificado.",
-        icono="📄",
-    )
+def render(*, cabecera: bool = True) -> None:
+    if cabecera:
+        titulo_pagina(
+            "Informes",
+            "Genera un documento con enunciado, procedimiento, gráfica, errores y certificado.",
+            icono="file",
+        )
     resultado = st.session_state.get("resultado")
     if resultado is None:
         sin_resultado()
         return
 
-    with tarjeta("Vista previa del contenido", icono="👁️"):
+    with tarjeta("Vista previa del contenido", icono="eye"):
         mostrar_solucion(resultado)
         columnas = st.columns(3)
         columnas[0].metric("Pasos", len(resultado.pasos))
@@ -37,7 +45,7 @@ def render() -> None:
         )
     mostrar_certificado(resultado.certificado)
 
-    with tarjeta("Opciones del informe", icono="⚙️"):
+    with tarjeta("Opciones del informe", icono="settings"):
         columnas = st.columns(2)
         titulo = columnas[0].text_input(
             "Título",
@@ -64,10 +72,10 @@ def render() -> None:
 
     columnas = st.columns(2)
     generar_pdf_click = columnas[0].button(
-        "📕 Generar PDF", key="informe_generar_pdf", type="primary", use_container_width=True
+        "Generar PDF", key="informe_generar_pdf", type="primary", use_container_width=True
     )
     generar_latex_click = columnas[1].button(
-        "📝 Generar LaTeX", key="informe_generar_latex", use_container_width=True
+        "Generar LaTeX", key="informe_generar_latex", use_container_width=True
     )
     if generar_pdf_click:
         with st.spinner("Componiendo el PDF…"):
@@ -98,10 +106,11 @@ def render() -> None:
     if informe_pdf is not None:
         st.success(
             f"PDF listo: {informe_pdf.nombre_archivo} "
-            f"({informe_pdf.tamano_bytes / 1024:.1f} KB)."
+            f"({informe_pdf.tamano_bytes / 1024:.1f} KB).",
+            icon=None,
         )
         st.download_button(
-            "⬇️ Descargar PDF",
+            "Descargar PDF",
             data=informe_pdf.contenido,
             file_name=informe_pdf.nombre_archivo,
             mime=informe_pdf.mime,
@@ -110,9 +119,9 @@ def render() -> None:
         )
     latex = st.session_state.get("informe_latex")
     if latex:
-        st.success("Documento LaTeX listo.")
+        st.success("Documento LaTeX listo.", icon=None)
         st.download_button(
-            "⬇️ Descargar LaTeX",
+            "Descargar LaTeX",
             data=latex.encode("utf-8"),
             file_name="informe_edolab.tex",
             mime="text/x-tex",

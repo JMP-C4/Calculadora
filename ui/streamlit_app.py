@@ -1,30 +1,24 @@
-"""Aplicación Streamlit de EDO-Lab: cabecera, barra lateral y pestañas."""
+"""Aplicación Streamlit de EDO-Lab: cabecera, navegación e inspector."""
 
 from __future__ import annotations
 
 import traceback
-from typing import Callable
+from pathlib import Path
 
 import streamlit as st
 
 from core.ia_opcional import estado_ia
 from core.hibrido import resolver
-from core.tipos import (
-    EntradaInvalida,
-    ResultadoSolucion,
-    SolucionNoDisponible,
-    TiempoAgotado,
-)
+from core.tipos import EntradaInvalida, SolucionNoDisponible, TiempoAgotado
 
-from ui import estilos
-from ui.componentes import mensaje_error, tarjeta, teclado_ayuda, tema_actual
-from ui.pagina_aprendizaje import render as render_aprendizaje
-from ui.pagina_cualitativo import render as render_cualitativo
-from ui.pagina_datos import render as render_datos
-from ui.pagina_incertidumbre import render as render_incertidumbre
-from ui.pagina_informes import render as render_informes
-from ui.pagina_numerico import render as render_numerico
-from ui.pagina_resolver import render as render_resolver
+from ui import estilos, navegacion, vistas
+from ui.componentes import (
+    mensaje_error,
+    tarjeta,
+    teclado_ayuda,
+    tema_actual,
+)
+from ui.iconos import svg
 
 _EJEMPLOS = {
     "logística": {
@@ -135,21 +129,6 @@ def _aplicar_pendientes() -> None:
         st.session_state["_resolver_automatico"] = True
 
 
-def _sugerencia_error(exc: Exception) -> str:
-    texto = str(exc).lower()
-    if "paréntesis" in texto:
-        return "Revisa que todos los paréntesis estén balanceados."
-    if "multiplicación" in texto or "falta un" in texto:
-        return "Parece que falta un `*`: por ejemplo, escribe `2*x` en lugar de `2x`."
-    if "sólo se admiten" in texto:
-        return "Usa únicamente x, y y funciones habituales; los parámetros se exploran aparte."
-    if "intervalo" in texto:
-        return "Comprueba que x_mín < x₀ < x_máx."
-    if "tiempo" in texto:
-        return "El cálculo tardó demasiado; prueba un intervalo más corto o el método numérico."
-    return "Revisa la ecuación y la condición inicial, o carga uno de los ejemplos."
-
-
 def _resolver_actual(*, guardar: bool = True) -> None:
     texto = str(st.session_state.get("ecuacion_input", "")).strip()
     if not texto:
@@ -173,15 +152,7 @@ def _resolver_actual(*, guardar: bool = True) -> None:
                 metodo=metodo,
                 timeout=10.0,
             )
-    except EntradaInvalida as exc:
-        st.session_state["error_resolver"] = str(exc)
-        st.session_state["resultado"] = None
-        return
-    except SolucionNoDisponible as exc:
-        st.session_state["error_resolver"] = str(exc)
-        st.session_state["resultado"] = None
-        return
-    except TiempoAgotado as exc:
+    except (EntradaInvalida, SolucionNoDisponible, TiempoAgotado) as exc:
         st.session_state["error_resolver"] = str(exc)
         st.session_state["resultado"] = None
         return
@@ -230,20 +201,72 @@ def _resolver_actual(*, guardar: bool = True) -> None:
         historial.insert(0, entrada)
         st.session_state["historial"] = historial[:12]
 
+    navegacion.establecer_vista("Salida")
+    st.rerun()
+
+
+def _ir_a_graficas() -> None:
+    """El selector de la cabecera abre siempre la vista de visualización."""
+
+    navegacion.establecer_vista("Visualización")
+
+
+def _ir_al_ejercicio() -> None:
+    """Vuelve a la vista donde se muestra el ejercicio resuelto."""
+
+    vista = "Salida" if st.session_state.get("resultado") is not None else "Calculadora"
+    navegacion.establecer_vista(vista)
+
+
+def _instrucciones() -> None:
+    """Guía rápida de uso, accesible desde la cabecera."""
+
+    st.markdown(
+        """
+        1. Escribe la ecuación en el inspector con `y'` o `dy/dx`.
+        2. Indica `x₀` e `y₀` juntos si quieres una solución particular.
+        3. Pulsa **Resolver**: el motor verifica la solución antes de mostrarla.
+        4. Usa **Gráficas** para explorar el lienzo y **Ver ejercicio** para
+           volver a la salida del problema resuelto.
+        5. En **Salida** puedes elegir la notación; se aplica a todas las vistas.
+        6. El historial, la teoría, los ejercicios y los informes están en
+           **Historial y teoría**.
+        """
+    )
+    teclado_ayuda()
+
 
 def _cabecera() -> None:
-    columnas = st.columns([5, 3, 2], vertical_alignment="center")
+    columnas = st.columns([5, 1.2, 3.4], vertical_alignment="center", gap="small")
     with columnas[0]:
         st.markdown(
-            '<div class="edo-marca">🧪 EDO-Lab</div>'
-            '<div class="edo-lema">Laboratorio inteligente de ecuaciones '
-            "diferenciales de primer orden</div>",
+            f'<div class="edo-marca">{svg("activity", size=22)}'
+            "<span>EDO-Lab</span></div>"
+            '<div class="edo-lema">Laboratorio de ecuaciones diferenciales '
+            "de primer orden</div>",
             unsafe_allow_html=True,
         )
     with columnas[1]:
-        st.caption("«La IA propone, el motor matemático comprueba.»")
+        st.toggle("Tema oscuro", key="tema_oscuro")
     with columnas[2]:
-        st.toggle("🌙 Tema oscuro", key="tema_oscuro")
+        botones = st.columns([1, 1.1, 1.1], gap="small")
+        with botones[0]:
+            st.button(
+                "Gráficas",
+                key="edo_boton_graficas",
+                help="Abre el lienzo de visualización.",
+                on_click=_ir_a_graficas,
+            )
+        with botones[1]:
+            st.button(
+                "Ver ejercicio",
+                key="edo_boton_ejercicio",
+                help="Vuelve a la salida del ejercicio resuelto.",
+                on_click=_ir_al_ejercicio,
+            )
+        with botones[2]:
+            with st.popover("Instrucciones"):
+                _instrucciones()
 
 
 def _aplicar_ejemplo(nombre: str) -> None:
@@ -260,45 +283,57 @@ def _aplicar_ejemplo(nombre: str) -> None:
 
 def _barra_lateral() -> None:
     with st.sidebar:
-        st.markdown("### 🧭 Panel de control")
-        st.caption("Una tarea por pestaña. Los resultados se conservan al cambiar de pestaña.")
+        st.markdown(
+            f'<div class="edo-titulo">{svg("sliders", size=18)}'
+            "<h3>Inspector</h3></div>",
+            unsafe_allow_html=True,
+        )
+        st.caption("Los resultados se conservan al cambiar de vista.")
 
-        st.markdown("#### 1 · Ecuación")
         st.text_area(
-            "EDO",
+            "Ecuación diferencial",
             key="ecuacion_input",
-            height=92,
+            height=96,
             help="Escribe y' = f(x, y) o dy/dx = f(x, y).",
         )
-        ejemplo = st.selectbox(
-            "Ejemplos precargados",
-            options=["—"] + list(_EJEMPLOS),
-            key="ejemplo_selector",
-        )
-        if st.button("Cargar ejemplo", key="cargar_ejemplo", use_container_width=True):
-            if ejemplo != "—":
-                _aplicar_ejemplo(ejemplo)
-                st.rerun()
-
-        st.markdown("#### 2 · Condición inicial")
         columnas = st.columns(2)
         columnas[0].number_input("x₀", key="x0_input", format="%.6g")
         columnas[1].number_input("y₀", key="y0_input", format="%.6g")
 
-        st.markdown("#### 3 · Intervalo")
-        columnas = st.columns(2)
-        columnas[0].number_input("x mínimo", key="x_min_input", format="%.6g")
-        columnas[1].number_input("x máximo", key="x_max_input", format="%.6g")
-
-        st.markdown("#### 4 · Método")
-        st.selectbox(
-            "Método numérico de respaldo",
-            options=["Automático", "RK45", "DOP853", "BDF", "Radau", "RK4", "Heun", "Euler"],
-            key="metodo_input",
-        )
-
-        if st.button("🚀 Resolver", key="resolver_boton", type="primary", use_container_width=True):
+        if st.button("Resolver", key="resolver_boton", type="primary"):
             _resolver_actual()
+
+        with st.expander("Intervalo y método", expanded=False):
+            intervalo = st.columns(2)
+            intervalo[0].number_input("x mínimo", key="x_min_input", format="%.6g")
+            intervalo[1].number_input("x máximo", key="x_max_input", format="%.6g")
+            st.selectbox(
+                "Método numérico de respaldo",
+                options=[
+                    "Automático",
+                    "RK45",
+                    "DOP853",
+                    "BDF",
+                    "Radau",
+                    "RK4",
+                    "Heun",
+                    "Euler",
+                ],
+                key="metodo_input",
+            )
+
+        with tarjeta("Ejemplos", icono="folder"):
+            ejemplo = st.selectbox(
+                "Ejemplo precargado",
+                options=["—"] + list(_EJEMPLOS),
+                key="ejemplo_selector",
+            )
+            if st.button(
+                "Cargar ejemplo", key="cargar_ejemplo", use_container_width=True
+            ):
+                if ejemplo != "—":
+                    _aplicar_ejemplo(ejemplo)
+                    st.rerun()
 
         with st.expander("Opciones avanzadas", expanded=False):
             st.number_input(
@@ -314,30 +349,16 @@ def _barra_lateral() -> None:
             )
             estado = estado_ia()
             if estado.activa:
-                st.success(f"IA opcional activa ({estado.modelo}).")
+                st.success(f"IA opcional activa ({estado.modelo}).", icon=None)
             else:
                 st.caption("IA opcional desactivada.")
 
-        historial = st.session_state.get("historial", [])
-        if historial:
-            st.markdown("#### 🕘 Historial")
-            with st.container(height=220, border=True):
-                for indice, entrada in enumerate(historial[:10]):
-                    etiqueta = f"{entrada['ecuacion']} · y({entrada['x0']:g})={entrada['y0']:g}"
-                    if st.button(etiqueta, key=f"hist_{indice}", use_container_width=True):
-                        st.session_state["_cargar_ecuacion"] = {
-                            "ecuacion": entrada["ecuacion"],
-                            "x0": entrada["x0"],
-                            "y0": entrada["y0"],
-                            "x_min": entrada["x_min"],
-                            "x_max": entrada["x_max"],
-                        }
-                        st.rerun()
-
         teclado_ayuda()
+        if st.button("Ver historial y teoría", key="inspector_ir_historial"):
+            navegacion.ir_a("Historial y teoría")
 
 
-def _render_seguro(nombre: str, funcion: Callable[[], None]) -> None:
+def _render_seguro(nombre: str, funcion) -> None:
     try:
         funcion()
     except Exception:
@@ -350,9 +371,10 @@ def _render_seguro(nombre: str, funcion: Callable[[], None]) -> None:
 
 
 def main() -> None:
+    icono = str(Path(__file__).with_name("favicon.svg"))
     st.set_page_config(
         page_title="EDO-Lab",
-        page_icon="🧪",
+        page_icon=icono,
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -360,46 +382,14 @@ def main() -> None:
     _aplicar_pendientes()
     st.markdown(estilos.css(tema_actual()), unsafe_allow_html=True)
     _cabecera()
-    st.markdown(estilos.css(tema_actual()), unsafe_allow_html=True)
+    vista = navegacion.barra()
     _barra_lateral()
 
     if st.session_state.pop("_resolver_automatico", False):
         _resolver_actual()
 
-    pestañas = st.tabs(
-        [
-            "🧮 Resolver",
-            "🧭 Cualitativo",
-            "📐 Numérico",
-            "📊 Datos",
-            "🎲 Incertidumbre",
-            "🎓 Aprender",
-            "📄 Informes",
-        ]
-    )
-    with pestañas[0]:
-        _render_seguro("Resolver", render_resolver)
-    with pestañas[1]:
-        _render_seguro("Cualitativo", render_cualitativo)
-    with pestañas[2]:
-        _render_seguro("Numérico", render_numerico)
-    with pestañas[3]:
-        _render_seguro("Datos", render_datos)
-    with pestañas[4]:
-        _render_seguro("Incertidumbre", render_incertidumbre)
-    with pestañas[5]:
-        _render_seguro("Aprender", render_aprendizaje)
-    with pestañas[6]:
-        _render_seguro("Informes", render_informes)
-
-    estado = estado_ia()
-    st.markdown(
-        '<div class="edo-pie">EDO-Lab · núcleo determinista · '
-        f"IA opcional: {'activa' if estado.activa else 'desactivada'} · "
-        "los resultados se recalculan sólo cuando lo pides."
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    _render_seguro(vista, lambda: vistas.despachar(vista))
+    vistas.pie()
 
 
 __all__ = ["main"]

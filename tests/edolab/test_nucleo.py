@@ -56,6 +56,25 @@ def test_solucion_simbolica_certificada() -> None:
     assert resultado.particular_latex
 
 
+@pytest.mark.parametrize(
+    "enunciado",
+    [
+        r"$$\frac{dy}{dx} + \frac{2}{x}y = 4x, \quad x > 0$$",
+        r"$$(2xy + 3x^2)dx + (x^2 + 4y^3)dy = 0$$",
+        r"$$\frac{dy}{dx} - y = e^{2x} y^3$$",
+        r"$$\frac{dy}{dx} = y^2 - \frac{2}{x}y - \frac{1}{x^2}, \quad x > 0$$",
+    ],
+)
+def test_enunciados_de_lista_resuelven(enunciado: str) -> None:
+    resultado = resolver(
+        enunciado, x0=1.0, y0=1.0, x_min=0.1, x_max=3.0, timeout=15.0
+    )
+    assert resultado.certificado is not None
+    assert resultado.solucion_latex.strip()
+    if "x > 0" in enunciado:
+        assert any("Dominio declarado" in aviso for aviso in resultado.advertencias)
+
+
 def test_respaldo_numerico_con_certificado() -> None:
     resultado = resolver(
         "y' = x*y + sin(x)",

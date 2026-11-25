@@ -54,6 +54,9 @@ def _resultado_numerico(
         ecuacion.rhs, x0, y0, x_min=x_min, x_max=x_max
     )
     advertencias = [motivo]
+    dominio = getattr(getattr(ecuacion, "parsed", None), "dominio", "")
+    if dominio:
+        advertencias.append(f"Dominio declarado en el enunciado: {dominio}.")
     if numerico.mensaje:
         advertencias.append(numerico.mensaje)
     if existencia.no_unicidad:
@@ -128,7 +131,7 @@ def resolver(
             "Para un PVI debes indicar x₀ e y₀; para la solución general deja "
             "ambos vacíos."
         )
-    parsear(texto)
+    ecuacion = parsear(texto)
 
     motivo = ""
     motor = None
@@ -163,6 +166,11 @@ def resolver(
             resultado.advertencias.append(
                 "La solución general no permitió imponer la condición inicial "
                 "en una rama real; revisa el dominio o prueba otro punto."
+            )
+        dominio = getattr(getattr(ecuacion, "parsed", None), "dominio", "")
+        if dominio:
+            resultado.advertencias.insert(
+                0, f"Dominio declarado en el enunciado: {dominio}."
             )
         return resultado
 
@@ -229,6 +237,49 @@ def curva_solucion(
         return None
 
 
+def curvas_familia(
+    resultado: ResultadoSolucion,
+    *,
+    constantes: tuple[float, ...] = (-2.0, -1.0, 0.0, 1.0, 2.0),
+    n_points: int = 400,
+) -> list[tuple[np.ndarray, np.ndarray, str]]:
+    """Puntos de la familia general al variar la constante de integración."""
+
+    motor = getattr(resultado, "resultado_motor", None)
+    general = getattr(motor, "general", None)
+    if general is None or not getattr(general, "is_explicit", False):
+        return []
+    expresion = getattr(general, "expr", None)
+    if expresion is None:
+        return []
+    constante = getattr(general, "constant", None)
+    if constante is None:
+        candidatas = expresion.free_symbols - {X, Y}
+        constante = next(iter(candidatas), None)
+    if constante is not None and expresion.free_symbols - {X, Y, constante}:
+        return []
+    if resultado.intervalo is None:
+        x_min, x_max = -5.0, 5.0
+    else:
+        x_min, x_max = resultado.intervalo
+    xs = np.linspace(float(x_min), float(x_max), max(int(n_points), 2))
+    curvas: list[tuple[np.ndarray, np.ndarray, str]] = []
+    for valor in constantes:
+        try:
+            expr = expresion if constante is None else expresion.subs(constante, float(valor))
+            funcion = sp.lambdify(X, expr, modules=["numpy"])
+            with np.errstate(all="ignore"):
+                ys = np.asarray(funcion(xs), dtype=float)
+            if ys.shape != xs.shape:
+                ys = np.broadcast_to(ys, xs.shape).astype(float)
+            mascara = np.isfinite(ys)
+            if np.any(mascara):
+                curvas.append((xs[mascara], ys[mascara], f"C = {valor:g}"))
+        except Exception:
+            continue
+    return curvas
+
+
 def curva_desde_punto(
     texto: str,
     x_punto: float,
@@ -274,6 +325,7 @@ def evaluar_solucion(resultado: ResultadoSolucion, x: float) -> float | None:
 __all__ = [
     "resolver",
     "curva_solucion",
+    "curvas_familia",
     "curva_desde_punto",
     "evaluar_solucion",
 ]

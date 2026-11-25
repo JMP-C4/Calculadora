@@ -79,6 +79,13 @@ class PlotView(ttk.Frame):
         self.mode_selector.pack(side="left")
         self.mode_selector.bind("<<ComboboxSelected>>", self._on_mode_selected)
 
+        self._tools_visible = False
+        self.tools_button = ttk.Button(
+            header,
+            text="Herramientas",
+            command=self._toggle_tools,
+        )
+        self.tools_button.pack(side="right", padx=(6, 0))
         self.export_button = ttk.Button(
             header,
             text="Exportar",
@@ -104,12 +111,22 @@ class PlotView(ttk.Frame):
         self.canvas = FigureCanvasTkAgg(self.figure, master=self)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
 
-        toolbar_frame = ttk.Frame(self)
-        toolbar_frame.pack(fill="x")
-        self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
+        self.toolbar_frame = ttk.Frame(self)
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self.toolbar_frame)
         self.toolbar.update()
+        self.toolbar_frame.pack_forget()
 
         self._show_message("Introduce una ecuación y resuelve para graficar.")
+
+    def _toggle_tools(self) -> None:
+        self._tools_visible = not self._tools_visible
+        if self._tools_visible:
+            self.toolbar_frame.pack(fill="x")
+            self.tools_button.configure(text="Ocultar herramientas")
+        else:
+            self.toolbar_frame.pack_forget()
+            self.tools_button.configure(text="Herramientas")
+        self.toolbar.update()
 
     def _on_mode_selected(self, _event=None) -> None:
         mode = PlotMode(self.mode_selector.get())

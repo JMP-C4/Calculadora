@@ -42,10 +42,12 @@ class Certificado:
 
     @property
     def icono(self) -> str:
+        """Clave vectorial para la interfaz; nunca un carácter emoji."""
+
         return {
-            EstadoVerificacion.SIMBOLICA: "✅",
-            EstadoVerificacion.NUMERICA: "⚠️",
-            EstadoVerificacion.NO_VERIFICADA: "❌",
+            EstadoVerificacion.SIMBOLICA: "check",
+            EstadoVerificacion.NUMERICA: "alert",
+            EstadoVerificacion.NO_VERIFICADA: "x",
         }[self.estado]
 
     @property
@@ -133,11 +135,13 @@ class Equilibrio:
 
     @property
     def icono(self) -> str:
+        """Clave vectorial para la interfaz; nunca un carácter emoji."""
+
         if self.estabilidad.startswith("estable"):
-            return "🟢"
+            return "check"
         if self.estabilidad.startswith("inestable"):
-            return "🔴"
-        return "🟡"
+            return "x"
+        return "alert"
 
 
 @dataclass

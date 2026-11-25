@@ -90,3 +90,27 @@ def test_multiple_equals_are_rejected():
 
     assert result.rhs is None
     assert result.error is not None
+
+
+def test_latex_fraction_is_accepted():
+    result = parse_ode(r"$$\frac{dy}{dx} = \frac{x^2}{y}$$")
+
+    assert result.error is None
+    assert result.rhs is not None
+    assert sp.simplify(result.rhs - x**2 / y) == 0
+
+
+def test_latex_functions_and_powers_are_accepted():
+    result = parse_ode(r"$\frac{dy}{dx} = \sqrt{x} + \sin(x) + x^{2}$")
+
+    assert result.error is None
+    assert result.rhs is not None
+    expected = sp.sqrt(x) + sp.sin(x) + x**2
+    assert sp.simplify(result.rhs - expected) == 0
+
+
+def test_latex_higher_order_is_rejected():
+    result = parse_ode(r"$$\frac{d^2y}{dx^2} = y$$")
+
+    assert result.rhs is None
+    assert result.error is not None

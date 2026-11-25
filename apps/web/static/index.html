@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ODE Calculator: resuelve, verifica y explica ecuaciones diferenciales de primer orden en un lienzo interactivo.">
+  <meta name="theme-color" content="#0c1726">
+  <title>ODE Calculator — ecuaciones diferenciales en un lienzo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%230c1726'/%3E%3Cpath d='M11 40c8-19 14 10 22-9s12 9 20-8' fill='none' stroke='%23d8f37c' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <script>
+    (() => {
+      try {
+        const saved = localStorage.getItem("ode-theme");
+        const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = saved || (dark ? "dark" : "light");
+      } catch (_) { /* almacenamiento no disponible */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#editor">Saltar al editor</a>
+
+  <header class="topbar">
+    <div class="topbar__inner">
+      <a class="brand" href="#top" aria-label="ODE Calculator, inicio">
+        <span class="brand__mark" aria-hidden="true">∿</span>
+        <span class="brand__text">ODE <span>Calculator</span></span>
+        <span class="brand__badge">v2.0</span>
+      </a>
+
+      <nav class="nav" id="nav" aria-label="Navegación principal">
+        <div class="nav__group">
+          <button class="nav__link" type="button" aria-expanded="false" aria-haspopup="true">
+            Producto
+            <svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="dropdown" role="menu">
+            <a class="dropdown__item" role="menuitem" href="#workspace">
+              <span class="dropdown__icon" aria-hidden="true">◫</span>
+              <span><strong>Workspace</strong><small>Editor, lienzo y resultados en un mismo lugar.</small></span>
+            </a>
+            <a class="dropdown__item" role="menuitem" href="#editor">
+              <span class="dropdown__icon" aria-hidden="true">ƒ</span>
+              <span><strong>Editor de ecuaciones</strong><small>Escribe, inserta símbolos y resuelve.</small></span>
+            </a>
+            <a class="dropdown__item" role="menuitem" href="#canvas-card">
+              <span class="dropdown__icon" aria-hidden="true">∿</span>
+              <span><strong>Canvas editor</strong><small>7 visualizaciones, anotaciones y exportación.</small></span>
+            </a>
+            <a class="dropdown__item" role="menuitem" href="#steps">
+              <span class="dropdown__icon" aria-hidden="true">≡</span>
+              <span><strong>Pasos explicados</strong><small>Entiende el método, no solo el resultado.</small></span>
+            </a>
+            <div class="dropdown__sep" role="separator"></div>
+            <a class="dropdown__item" role="menuitem" href="#api">
+              <span class="dropdown__icon" aria-hidden="true">↗</span>
+              <span><strong>API local</strong><small>Integra el motor en tus propios scripts.</small></span>
+            </a>
+          </div>
+        </div>
+
+        <div class="nav__group">
+          <button class="nav__link" type="button" aria-expanded="false" aria-haspopup="true">
+            Gráficas
+            <svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="dropdown dropdown--wide" role="menu">
+            <button class="dropdown__item" type="button" role="menuitem" data-select-plot="solution">
+              <span class="dropdown__icon" aria-hidden="true">y</span>
+              <span><strong>Solución y(x)</strong><small>La curva del PVI o de la familia.</small></span>
+            </button>
+            <button class="dropdown__item" type="button" role="menuitem" data-select-plot="direction_field">
+              <span class="dropdown__icon" aria-hidden="true">↗</span>
+              <span><strong>Campo de direcciones</strong><small>El flujo de pendientes de la EDO.</small></span>
+            </button>
+            <button class="dropdown__item" type="button" role="menuitem" data-select-plot="isoclines">
+              <span class="dropdown__icon" aria-hidden="true">≋</span>
+              <span><strong>Isoclinas</strong><small>Curvas donde f(x, y) es constante.</small></span>
+            </button>
+            <button class="dropdown__item" type="button" role="menuitem" data-select-plot="family">
+              <span class="dropdown__icon" aria-hidden="true">⋔</span>
+              <span><strong>Familia de curvas</strong><small>La solución general, a la vista.</small></span>
+            </button>
+            <button class="dropdown__item" type="button" role="menuitem" data-select-plot="phase_line">
+              <span class="dropdown__icon" aria-hidden="true">→</span>
+              <span><strong>Línea de fase</strong><small>Dinámica de una EDO autónoma.</small></span>
+            </button>
+            <button class="dropdown__item" type="button" role="menuitem" data-select-plot="equilibria">
+              <span class="dropdown__icon" aria-hidden="true">⊙</span>
+              <span><strong>Puntos de equilibrio</strong><small>Estabilidad de los estados f(y) = 0.</small></span>
+            </button>
+            <button class="dropdown__item" type="button" role="menuitem" data-select-plot="surface">
+              <span class="dropdown__icon" aria-hidden="true">▱</span>
+              <span><strong>Superficie 3D</strong><small>z = f(x, y) en perspectiva.</small></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="nav__group">
+          <button class="nav__link" type="button" aria-expanded="false" aria-haspopup="true">
+            Ejercicios
+            <svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="dropdown" role="menu">
+            <a class="dropdown__item" role="menuitem" href="#exercises">
+              <span class="dropdown__icon" aria-hidden="true">▤</span>
+              <span><strong>Biblioteca</strong><small>Separables, lineales, exactas y más.</small></span>
+            </a>
+            <a class="dropdown__item" role="menuitem" href="#guide">
+              <span class="dropdown__icon" aria-hidden="true">✦</span>
+              <span><strong>Ejercicio guiado</strong><small>Contexto, condiciones y qué observar.</small></span>
+            </a>
+            <button class="dropdown__item" type="button" role="menuitem" id="nav-demo">
+              <span class="dropdown__icon" aria-hidden="true">▶</span>
+              <span><strong>Cargar demostración</strong><small>Un ejemplo completo en un clic.</small></span>
+            </button>
+          </div>
+        </div>
+
+        <a class="nav__link nav__link--plain" href="#docs">Documentación</a>
+      </nav>
+
+      <div class="topbar__actions">
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Cambiar tema" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
+        </button>
+        <a class="btn btn--ghost hide-sm" href="#api">API</a>
+        <a class="btn btn--primary" href="#editor">Abrir editor</a>
+        <button class="icon-btn menu-btn" id="menu-toggle" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="nav">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ================================================================== -->
+    <!-- Hero: product page                                                 -->
+    <!-- ================================================================== -->
+    <section class="hero">
+      <div class="hero__copy">
+        <span class="eyebrow"><span class="pulse"></span> Motor verificado · residuo 0 · v2.0</span>
+        <h1>La ecuación es el principio. <em>El lienzo hace el resto.</em></h1>
+        <p class="lede">
+          Resuelve ecuaciones diferenciales de primer orden, verifica cada respuesta
+          y explora la solución en un canvas interactivo. Sin cajas negras:
+          método, pasos y gráfica, siempre a la vista.
+        </p>
+        <div class="hero__actions">
+          <a class="btn btn--primary btn--lg" href="#editor">
+            Empezar a resolver
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <button class="btn btn--ghost btn--lg" id="demo-button" type="button">Cargar demostración</button>
+        </div>
+        <dl class="hero__stats">
+          <div><dt>7</dt><dd>tipos de gráfica</dd></div>
+          <div><dt>15+</dt><dd>métodos propios</dd></div>
+          <div><dt>105</dt><dd>ejercicios de práctica</dd></div>
+          <div><dt>0</dt><dd>resultados sin verificar</dd></div>
+        </dl>
+      </div>
+
+      <div class="hero__visual" aria-hidden="true">
+        <div class="product-card">
+          <div class="product-card__bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span>y' = x + y · PVI (0, 1)</span>
+          </div>
+          <svg viewBox="0 0 560 320" role="presentation">
+            <defs>
+              <linearGradient id="fade" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stop-color="#7de6c7" stop-opacity=".2"/>
+                <stop offset="1" stop-color="#7de6c7" stop-opacity="0"/>
+              </linearGradient>
+              <pattern id="grid" width="56" height="40" patternUnits="userSpaceOnUse">
+                <path d="M56 0H0V40" fill="none" stroke="rgba(255,255,255,.055)" stroke-width="1"/>
+              </pattern>
+            </defs>
+            <rect width="560" height="320" fill="url(#grid)"/>
+            <path d="M0 244h560M0 164h560M0 84h560" stroke="rgba(255,255,255,.08)" stroke-dasharray="3 6"/>
+            <path d="M0 284C60 280 88 258 122 234S196 174 250 150s82 6 126-20 90-46 184-88v178H0Z" fill="url(#fade)"/>
+            <path class="curve" d="M0 284C60 280 88 258 122 234S196 174 250 150s82 6 126-20 90-46 184-88"/>
+            <path class="curve curve-2" d="M0 258C64 250 104 224 148 202s94-28 138-38 96-34 138-44 84-24 136-30"/>
+            <g fill="#d8f37c">
+              <circle cx="250" cy="150" r="4.5"/>
+              <circle cx="376" cy="130" r="4.5"/>
+            </g>
+            <g fill="rgba(237,244,247,.42)" font-family="ui-monospace, monospace" font-size="10">
+              <text x="16" y="302">0</text>
+              <text x="146" y="302">1</text>
+              <text x="286" y="302">2</text>
+              <text x="426" y="302">3</text>
+              <text x="514" y="302">x</text>
+              <text x="8" y="248">1</text>
+              <text x="8" y="168">2</text>
+              <text x="8" y="88">3</text>
+            </g>
+          </svg>
+          <span class="float-chip float-chip--ok"><span class="mini-dot"></span> residuo 0.0</span>
+          <span class="float-chip float-chip--method">Lineal · μ(x) = e<sup>−x</sup></span>
+          <span class="float-chip float-chip--mode"><span class="mini-dot"></span> Campo de direcciones</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="ticker" aria-hidden="true">
+      <span>sympy</span><span>scipy</span><span>numpy</span><span>verificación de residuo</span><span>plotly</span><span>pasos explicados</span><span>api local</span>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- Workspace                                                          -->
+    <!-- ================================================================== -->
+    <section class="workspace" id="workspace">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">Workspace</span>
+          <h2>Todo lo que necesitas, en un solo lienzo.</h2>
+          <p>Escribe la ecuación, resuelve y observa cómo el método, la verificación y la gráfica se actualizan juntos.</p>
+        </div>
+        <div class="workspace__status" id="engine-status-wrap">
+          <span class="dot"></span>
+          <span id="engine-status">Listo para resolver</span>
+        </div>
+      </div>
+
+      <div class="bento" id="app-grid">
+        <!-- Editor ------------------------------------------------------ -->
+        <article class="card card--editor" id="editor">
+          <header class="card__head">
+            <span class="card__icon" aria-hidden="true">ƒ</span>
+            <div>
+              <p class="card__kicker">Editor</p>
+              <h3>Tu ecuación</h3>
+            </div>
+            <span class="chip chip--soft head-action">Python · LaTeX</span>
+          </header>
+
+          <form class="form" id="form">
+            <label class="field field--equation" for="equation">
+              <span>Ecuación diferencial</span>
+              <div class="equation-input">
+                <span class="equation-input__prefix" aria-hidden="true">ƒ</span>
+                <input id="equation" value="y' = x + y" autocomplete="off" spellcheck="false" aria-label="Ecuación diferencial">
+              </div>
+              <span class="field__hint">Acepta y', dy/dx, M dx + N dy = 0, formas implícitas y LaTeX como <code>$$\frac{dy}{dx} = \frac{x^2}{y}$$</code>.</span>
+            </label>
+
+            <div class="symbols" role="group" aria-label="Insertar símbolo">
+              <button type="button" data-token="dy/dx" title="Derivada">dy/dx</button>
+              <button type="button" data-token="sqrt(" title="Raíz cuadrada">√(</button>
+              <button type="button" data-token="exp(" title="Exponencial">eˣ</button>
+              <button type="button" data-token="sin(" title="Seno">sin</button>
+              <button type="button" data-token="cos(" title="Coseno">cos</button>
+              <button type="button" data-token="log(" title="Logaritmo">ln</button>
+              <button type="button" data-token="**" title="Potencia">^</button>
+              <button type="button" data-token="pi" title="Pi">π</button>
+              <button type="button" id="latex-example" title="Cargar un ejemplo en LaTeX">LaTeX</button>
+            </div>
+
+            <fieldset class="conditions">
+              <legend>Condiciones iniciales <span>opcional</span></legend>
+              <div class="conditions__grid">
+                <label class="field"><span>x₀</span><input id="x0" type="number" step="any" value="0"></label>
+                <label class="field"><span>y₀</span><input id="y0" type="number" step="any" value="1"></label>
+                <label class="field"><span>x mín</span><input id="x_min" type="number" step="any" value="0"></label>
+                <label class="field"><span>x máx</span><input id="x_max" type="number" step="any" value="2"></label>
+              </div>
+            </fieldset>
+
+            <div class="form__actions">
+              <button class="btn btn--primary" id="submit" type="submit">Resolver y verificar</button>
+              <button class="btn btn--ghost" type="button" id="clear-button">Limpiar</button>
+            </div>
+            <p class="form__foot">⌘/Ctrl + Enter para resolver. Cada respuesta se sustituye en la EDO antes de mostrarse.</p>
+          </form>
+        </article>
+
+        <!-- Canvas ------------------------------------------------------ -->
+        <article class="card card--canvas" id="canvas-card">
+          <header class="card__head">
+            <span class="card__icon card__icon--violet" aria-hidden="true">∿</span>
+            <div>
+              <p class="card__kicker">Canvas editor</p>
+              <h3>Lienzo interactivo</h3>
+            </div>
+            <div class="canvas-actions">
+              <button class="icon-btn" type="button" data-canvas="annotate" aria-pressed="false" title="Anotar sobre la gráfica" aria-label="Activar anotación">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 5 5 5M4 20l4.5-1L20 7.5a1.8 1.8 0 0 0 0-2.5l-1-1a1.8 1.8 0 0 0-2.5 0L5 15.5 4 20Z"/></svg>
+              </button>
+              <button class="icon-btn" type="button" data-canvas="clear" title="Borrar anotaciones" aria-label="Borrar anotaciones">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+              </button>
+              <button class="icon-btn" type="button" data-canvas="download" title="Exportar PNG" aria-label="Exportar gráfica como PNG">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+              </button>
+              <button class="icon-btn" type="button" data-canvas="fullscreen" title="Pantalla completa" aria-label="Ver lienzo en pantalla completa">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+              </button>
+            </div>
+          </header>
+
+          <div class="canvas-toolbar">
+            <label class="field field--inline" for="plot_mode">
+              <span>Tipo</span>
+              <select id="plot_mode">
+                <option value="solution">Solución y(x)</option>
+                <option value="direction_field">Campo de direcciones</option>
+                <option value="isoclines">Isoclinas</option>
+                <option value="family">Familia de curvas</option>
+                <option value="phase_line">Línea de fase</option>
+                <option value="equilibria">Puntos de equilibrio</option>
+                <option value="surface">Superficie 3D z = f(x,y)</option>
+              </select>
+            </label>
+            <button class="btn btn--small btn--ghost" id="plot_refresh" type="button">Actualizar</button>
+            <span class="canvas-toolbar__spacer"></span>
+            <label class="pen-color" title="Color de la anotación">
+              <span class="sr-only">Color de anotación</span>
+              <input type="color" id="pen_color" value="#116a5a">
+            </label>
+            <span class="chip chip--soft" id="canvas-mode-label">Solución y(x)</span>
+          </div>
+
+          <div class="canvas-stage" id="canvas-stage">
+            <div id="plot" role="img" aria-label="Gráfica de la ecuación diferencial"></div>
+            <canvas id="annotation-canvas" aria-hidden="true"></canvas>
+            <div class="canvas-empty" id="canvas-empty">
+              <span class="canvas-empty__icon" aria-hidden="true">∿</span>
+              <p>Resuelve una ecuación para dibujar su lienzo.</p>
+              <span>7 visualizaciones · anotación · exportación PNG</span>
+            </div>
+          </div>
+          <p class="notice" id="plot-notice" hidden></p>
+          <footer class="canvas-foot">
+            <span class="legend-dot"></span>
+            <span id="canvas-hint">Zoom, arrastra y exporta desde el lienzo · activa el lápiz para anotar</span>
+          </footer>
+        </article>
+
+        <!-- Solution ---------------------------------------------------- -->
+        <article class="card card--solution" id="solution">
+          <header class="card__head">
+            <span class="card__icon" aria-hidden="true">≡</span>
+            <div>
+              <p class="card__kicker">Resultado</p>
+              <h3>Solución</h3>
+            </div>
+            <span class="chip chip--soft head-action" id="solution-chip">Pendiente</span>
+          </header>
+          <div class="solution__body">
+            <div class="empty-state" id="solution-empty">
+              <strong>Aún no hay solución</strong>
+              <span>Resuelve la ecuación del editor para ver aquí la solución general y particular.</span>
+            </div>
+            <div id="solution-content" hidden>
+              <div class="solution__method">
+                <span>Método elegido</span>
+                <strong id="result-method">—</strong>
+              </div>
+              <div class="solution__block" id="general-block">
+                <span>Solución general</span>
+                <div class="math" id="result-general"></div>
+              </div>
+              <div class="solution__block" id="particular-block">
+                <span>Solución particular</span>
+                <div class="math" id="result-particular"></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- Verification ------------------------------------------------ -->
+        <article class="card card--verify" id="verification">
+          <header class="card__head">
+            <span class="card__icon card__icon--amber" aria-hidden="true">✓</span>
+            <div>
+              <p class="card__kicker">Confianza</p>
+              <h3>Verificación</h3>
+            </div>
+          </header>
+          <div class="verify__status" id="verify-status">
+            <span class="verify__ring" aria-hidden="true">?</span>
+            <div>
+              <strong>Sin verificar</strong>
+              <p>Al resolver, sustituimos la solución en la EDO y comprobamos el residuo.</p>
+            </div>
+          </div>
+          <dl class="mini-list">
+            <div><dt>Dominio</dt><dd id="result-domain">—</dd></div>
+            <div><dt>Intervalo</dt><dd id="result-interval">—</dd></div>
+          </dl>
+        </article>
+
+        <!-- Methods ----------------------------------------------------- -->
+        <article class="card card--methods" id="methods">
+          <header class="card__head">
+            <span class="card__icon" aria-hidden="true">◈</span>
+            <div>
+              <p class="card__kicker">Clasificación</p>
+              <h3>Métodos aplicables</h3>
+            </div>
+            <span class="chip chip--soft head-action" id="method-count">0</span>
+          </header>
+          <div class="method-list" id="method-list">
+            <div class="empty-state"><strong>Sin clasificar</strong><span>Los métodos compatibles aparecerán aquí.</span></div>
+          </div>
+        </article>
+
+        <!-- Steps ------------------------------------------------------- -->
+        <article class="card card--steps" id="steps">
+          <header class="card__head">
+            <span class="card__icon" aria-hidden="true">1·2·3</span>
+            <div>
+              <p class="card__kicker">Explicación</p>
+              <h3>Pasos, no magia</h3>
+            </div>
+          </header>
+          <div class="steps" id="step-list">
+            <div class="empty-state"><strong>Sin pasos todavía</strong><span>Resuelve una ecuación para desplegar el razonamiento paso a paso.</span></div>
+          </div>
+        </article>
+
+        <!-- Exercises --------------------------------------------------- -->
+        <article class="card card--exercises" id="exercises">
+          <header class="card__head">
+            <span class="card__icon card__icon--violet" aria-hidden="true">▤</span>
+            <div>
+              <p class="card__kicker">Práctica</p>
+              <h3>Biblioteca de ejercicios</h3>
+            </div>
+            <span class="chip chip--soft head-action" id="exercise-count">0</span>
+          </header>
+          <div class="filter-row" id="exercise-filters" role="group" aria-label="Filtrar ejercicios por tipo"></div>
+          <div class="exercise-grid" id="exercise-grid"></div>
+        </article>
+
+        <!-- Guided exercise --------------------------------------------- -->
+        <article class="card card--guide" id="guide">
+          <header class="card__head">
+            <span class="card__icon card__icon--amber" aria-hidden="true">✦</span>
+            <div>
+              <p class="card__kicker">Ejercicio guiado</p>
+              <h3>Entiende antes de resolver</h3>
+            </div>
+            <span class="chip chip--soft head-action" id="guide-chip">Demo</span>
+          </header>
+          <div class="guide" id="guide-content">
+            <div class="guide__top">
+              <div>
+                <span class="guide__type">Lineal de primer orden</span>
+                <h4>Crecimiento con forzamiento</h4>
+              </div>
+            </div>
+            <p>Una EDO lineal con término independiente. El factor integrante convierte el lado izquierdo en la derivada de un producto.</p>
+            <div class="guide__equation">y' = x + y &nbsp;·&nbsp; y(0) = 1</div>
+            <div class="guide__note"><span>✦</span><span><strong>Qué observar:</strong> la solución particular pasa por (0, 1); la general añade la familia con la constante C.</span></div>
+            <div class="guide__actions">
+              <button class="btn btn--small btn--primary" type="button" id="guide-load">Cargar y resolver</button>
+              <button class="btn btn--small btn--ghost" type="button" id="guide-random">Otro reto</button>
+            </div>
+          </div>
+        </article>
+
+        <!-- Warnings ---------------------------------------------------- -->
+        <article class="card card--warnings" id="warnings">
+          <header class="card__head">
+            <span class="card__icon card__icon--rose" aria-hidden="true">!</span>
+            <div>
+              <p class="card__kicker">Notas del motor</p>
+              <h3>Advertencias</h3>
+            </div>
+          </header>
+          <ul class="warning-list" id="warning-list">
+            <li class="muted">Sin advertencias. Cuando el motor detecte algo relevante, aparecerá aquí.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- Product feature band                                               -->
+    <!-- ================================================================== -->
+    <section class="feature-band">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">Por qué se siente distinto</span>
+          <h2>Un producto, no un formulario.</h2>
+          <p>La misma idea de siempre —resolver EDOs— con la ergonomía de una herramienta que da gusto usar.</p>
+        </div>
+      </div>
+      <div class="feature-grid">
+        <article class="feature feature--wide">
+          <span class="feature__icon" aria-hidden="true">∿</span>
+          <h3>Un canvas que también piensa</h3>
+          <p>Gráfica, anota una idea y cambia de representación sin perder el hilo. Del campo de direcciones a la superficie 3D con un solo gesto.</p>
+          <div class="feature__meta"><span>7 modos</span><span>zoom + pan</span><span>anotaciones</span><span>export PNG</span></div>
+          <div class="feature__art" aria-hidden="true"></div>
+        </article>
+        <article class="feature">
+          <span class="feature__icon" aria-hidden="true">✓</span>
+          <h3>Nada se muestra sin verificar</h3>
+          <p>Cada solución se sustituye en la EDO y se marca con su residuo. Si no cuadra, lo sabrás antes de confiar en ella.</p>
+          <div class="feature__meta"><span>residuo</span><span>PVI</span><span>dominio</span></div>
+        </article>
+        <article class="feature">
+          <span class="feature__icon" aria-hidden="true">≡</span>
+          <h3>Pasos que enseñan</h3>
+          <p>La explicación acompaña al resultado: forma estándar, factor integrante, sustitución y verificación en orden.</p>
+          <div class="feature__meta"><span>LaTeX</span><span>pasos</span><span>ASCII</span></div>
+        </article>
+        <article class="feature">
+          <span class="feature__icon" aria-hidden="true">⌘</span>
+          <h3>Hecho para el teclado</h3>
+          <p>Atajos, inserción de símbolos y resolución con ⌘/Ctrl + Enter. Menos fricción, más matemáticas.</p>
+          <div class="feature__meta"><span>atajos</span><span>símbolos</span><span>foco</span></div>
+        </article>
+        <article class="feature feature--wide">
+          <span class="feature__icon" aria-hidden="true">↗</span>
+          <h3>La misma API, en tu terminal</h3>
+          <p>La interfaz web y la de escritorio comparten el motor. Si quieres automatizar, el endpoint local está a un comando de distancia.</p>
+          <div class="feature__meta"><span>POST /solve</span><span>POST /plot</span><span>JSON</span></div>
+          <div class="feature__art" aria-hidden="true"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- API / docs                                                         -->
+    <!-- ================================================================== -->
+    <section class="api" id="api">
+      <div>
+        <span class="eyebrow">Para makers</span>
+        <h2>Tu EDO, también por API.</h2>
+        <p>El servidor no necesita frameworks externos. Levanta el proceso y usa los mismos endpoints que alimentan este lienzo.</p>
+        <div class="endpoint-list">
+          <div class="endpoint"><span class="endpoint__verb">POST</span><code>/solve</code><span>resolver + verificar</span></div>
+          <div class="endpoint"><span class="endpoint__verb">POST</span><code>/plot</code><span>datos de las 7 gráficas</span></div>
+          <div class="endpoint"><span class="endpoint__verb">GET</span><code>/health</code><span>estado del servidor</span></div>
+        </div>
+        <p id="docs" style="margin-top:18px;font-size:12px;">
+          Documentación completa en <a href="https://github.com/JMP-C4/Calculadora#readme" style="color:var(--accent);text-decoration:underline;text-underline-offset:3px;">README.md</a>.
+          La interfaz de escritorio usa el mismo motor y conserva los atajos de siempre.
+        </p>
+      </div>
+      <div class="code-card">
+        <div class="code-card__bar">
+          <i></i><i></i><i></i><span>terminal</span>
+          <button class="copy-btn" type="button" id="copy-curl">copiar</button>
+        </div>
+        <pre><code><span class="c"># resolver y verificar una EDO</span>
+curl -s http://127.0.0.1:8000/solve \
+  -H <span class="s">'Content-Type: application/json'</span> \
+  -d <span class="s">'{"equation": "y'"'"' = x + y", "x0": 0, "y0": 1}'</span>
+
+<span class="c"># obtener los datos de una gráfica</span>
+curl -s http://127.0.0.1:8000/plot \
+  -H <span class="s">'Content-Type: application/json'</span> \
+  -d <span class="s">'{"equation": "y'"'"' = x + y", "mode": "direction_field"}'</span>
+
+<span class="c"># abrir el workspace</span>
+<span class="k">python</span> -m apps.web.server --port 8000</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer__inner">
+      <span class="footer__badge"><span class="brand__mark" style="width:24px;height:24px;border-radius:7px;font-size:15px;">∿</span> ODE Calculator · MIT</span>
+      <div class="footer__links">
+        <a href="#workspace">Workspace</a>
+        <a href="#exercises">Ejercicios</a>
+        <a href="#api">API</a>
+        <a href="#top">Volver arriba</a>
+      </div>
+      <span>Hecho con SymPy, SciPy y Plotly.</span>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script defer src="/static/app.js"></script>
+</body>
+</html>

@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  tests:
-    name: Python ${{ matrix.python-version }}
+  core:
+    name: Núcleo (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -25,38 +25,79 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: pyproject.toml
 
-      - name: Instalar Xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-
-      - name: Instalar dependencias
+      - name: Instalar dependencias del núcleo
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -e ".[dev]"
 
-      - name: Ejecutar tests
-        run: xvfb-run -a python -m pytest tests/ -q
+      - name: Pruebas del motor (unit, regresión, integración, propiedades)
+        run: python -m pytest tests/unit tests/regression tests/integration tests/property -q
 
-  ui-tests:
-    name: UI tests (Python 3.12 + Tk)
+  bank:
+    name: Banco de ejercicios (100+)
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Instalar Tk y Xvfb
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar dependencias del núcleo
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ejecutar el banco
+        run: python -m pytest tests/bank -q -m bank
+
+  coverage:
+    name: Cobertura de odecalc (>= 85 %)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar dependencias del núcleo
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Medir cobertura
+        run: |
+          python -m pytest tests/unit tests/regression tests/integration tests/property tests/bank \
+            -q --cov=odecalc --cov-report=term-missing --cov-fail-under=85
+
+  legacy:
+    name: Suite legacy + escritorio (Python 3.12 + Tk)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Tk, Pillow-ImageTk y Xvfb
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk python3-venv xvfb
+          sudo apt-get install -y python3-tk python3-pil.imagetk python3-venv xvfb
 
       - name: Crear entorno con Tk del sistema
         run: python3 -m venv --system-site-packages .venv-ci
 
-      - name: Instalar dependencias
+      - name: Instalar dependencias de escritorio
         run: |
           .venv-ci/bin/python -m pip install --upgrade pip
-          .venv-ci/bin/pip install -r requirements.txt
+          .venv-ci/bin/pip install -e ".[dev,desktop]"
 
-      - name: Ejecutar suite completa
-        run: xvfb-run -a .venv-ci/bin/python -m pytest tests/ -q
+      - name: Ejecutar suite completa (sin banco, ya cubierto en otro job)
+        run: xvfb-run -a .venv-ci/bin/python -m pytest tests/ -q -m "not bank"
