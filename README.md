@@ -286,7 +286,8 @@ ode-calculator-web --port 8000
 
 Abre `http://127.0.0.1:8000` y usa el workspace: portada de producto, navegación
 con desplegables, editor, lienzo Plotly con anotaciones, exportación PNG y una
-biblioteca de 12 ejercicios guiados. También puedes llamar directamente a la API:
+biblioteca de 12 ejercicios guiados. Si el puerto 8000 ya está en uso, indica
+otro, por ejemplo `--port 8001`. También puedes llamar directamente a la API:
 
 ```bash
 curl -s http://127.0.0.1:8000/solve \
@@ -299,6 +300,23 @@ desplegable con los 7 tipos (los mismos del selector de Tk) dibujados con
 Plotly (CDN). Los tipos y avisos son los de la tabla anterior: si un modo no
 aplica (por ejemplo la línea de fase con una EDO no autónoma), la sección
 muestra el aviso en lugar de la figura.
+
+#### Diseños de la interfaz
+
+El engranaje de la barra superior abre **Configuración de diseño**, con tres
+estilos inspirados en las propuestas de Figma:
+
+| Diseño | Estilo |
+| --- | --- |
+| **Estudio 3 paneles** | Predeterminado: biblioteca, lienzo e inspector con acento naranja. |
+| **Cuaderno** | Papel cálido, serif y margen de notas. |
+| **Lienzo flotante** | Cuadrícula lila, acento índigo y tarjetas flotantes. |
+
+El diseño elegido se conserva en la cookie `ode-design` (`path=/`,
+`SameSite=Lax`, 365 días) y se restaura al recargar la página. El interruptor
+de claro/oscuro funciona de forma independiente y recuerda la preferencia por
+diseño en `localStorage` con la clave `ode-theme:<diseño>`; también respeta la
+preferencia `ode-theme` de versiones anteriores.
 
 Los datos los calcula el endpoint `POST /plot`, que acepta el mismo cuerpo
 que `/solve` más `"mode"` (`solution`, `direction_field`, `isoclines`,
@@ -373,6 +391,7 @@ los tests que los importan se omiten automáticamente durante la recolección.
 ├── apps/
 │   ├── desktop/             # Interfaz tkinter (app.py + plot_panel.py)
 │   └── web/                 # Servidor HTTP, endpoint /plot y frontend Plotly
+│       └── static/          # index.html, styles.css y app.js (diseños y temas)
 ├── tests/
 │   ├── unit/ · regression/ · integration/ · property/
 │   └── bank/                # 105 ejercicios con PVI
