@@ -179,6 +179,14 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
+  const DESIGN_IDS = ["studio", "cuaderno", "lienzo"];
+  const DESIGN_LABELS = {
+    studio: "Estudio 3 paneles",
+    cuaderno: "Cuaderno",
+    lienzo: "Lienzo flotante",
+  };
+  const DESIGN_COOKIE = "ode-design";
+
   const form = $("#form");
   const equationInput = $("#equation");
   const submitButton = $("#submit");
@@ -229,6 +237,9 @@
     strokes: [],
     currentStroke: null,
     theme: document.documentElement.dataset.theme || "light",
+    design: DESIGN_IDS.includes(document.documentElement.dataset.design)
+      ? document.documentElement.dataset.design
+      : "studio",
   };
 
   let toastTimer = null;
@@ -306,26 +317,112 @@
     if (input) input.value = value === null || value === undefined ? "" : String(value);
   };
 
+  const readCookie = (name) => {
+    const prefix = `${name}=`;
+    const entry = document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(prefix));
+    return entry ? decodeURIComponent(entry.slice(prefix.length)) : "";
+  };
+
+  const writeCookie = (name, value, days = 365) => {
+    const expires = new Date(Date.now() + days * 86400000).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+  };
+
   /* -------------------------------------------------------------- theme/nav */
 
-  const applyTheme = (theme) => {
-    state.theme = theme;
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("ode-theme", theme);
+  const applyTheme = (theme, { persist = true } = {}) => {
+    const mode = theme === "dark" ? "dark" : "light";
+    state.theme = mode;
+    document.documentElement.dataset.theme = mode;
+    if (persist) {
+      try {
+        window.localStorage.setItem(`ode-theme:${state.design}`, mode);
+      } catch (_) { /* almacenamiento no disponible */ }
+    }
     const toggle = $("#theme-toggle");
     if (toggle) {
-      toggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+      toggle.setAttribute("aria-pressed", mode === "dark" ? "true" : "false");
       toggle.setAttribute(
         "aria-label",
-        theme === "dark" ? "Activar tema claro" : "Activar tema oscuro",
+        mode === "dark" ? "Activar tema claro" : "Activar tema oscuro",
       );
       toggle.innerHTML =
-        theme === "dark"
+        mode === "dark"
           ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>'
           : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>';
     }
     if (state.lastFigure) drawFigure(state.lastFigure);
   };
+
+  const preferredTheme = (design) => {
+    let stored = null;
+    try {
+      stored = window.localStorage.getItem(`ode-theme:${design}`) || window.localStorage.getItem("ode-theme");
+    } catch (_) { /* almacenamiento no disponible */ }
+    if (stored === "light" || stored === "dark") return stored;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  };
+
+  const updateDesignOptions = () => {
+    $$(".design-option").forEach((option) => {
+      option.setAttribute(
+        "aria-checked",
+        option.dataset.design === state.design ? "true" : "false",
+      );
+    });
+  };
+
+  const applyDesign = (id, { persist = true } = {}) => {
+    const design = DESIGN_IDS.includes(id) ? id : "studio";
+    state.design = design;
+    document.documentElement.dataset.design = design;
+    if (persist) {
+      try {
+        writeCookie(DESIGN_COOKIE, design);
+      } catch (_) { /* cookies no disponibles */ }
+    }
+    applyTheme(preferredTheme(design), { persist: false });
+    updateDesignOptions();
+  };
+
+  const settingsToggle = $("#settings-toggle");
+  const settingsPanel = $("#settings-panel");
+
+  const setSettingsOpen = (open) => {
+    if (!settingsPanel || !settingsToggle) return;
+    settingsPanel.hidden = !open;
+    settingsToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+
+  settingsToggle?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setSettingsOpen(settingsPanel.hidden);
+    if (!settingsPanel.hidden) closeMenus();
+  });
+
+  $$(".design-option").forEach((option) => {
+    option.addEventListener("click", () => {
+      const design = option.dataset.design;
+      setSettingsOpen(false);
+      if (!design || design === state.design) return;
+      applyDesign(design);
+      showToast(`Diseño: ${DESIGN_LABELS[design] || design}`);
+    });
+    option.addEventListener("keydown", (event) => {
+      const forward = event.key === "ArrowDown" || event.key === "ArrowRight";
+      const backward = event.key === "ArrowUp" || event.key === "ArrowLeft";
+      if (!forward && !backward) return;
+      event.preventDefault();
+      const options = $$(".design-option");
+      const index = options.indexOf(option);
+      const next = options[(index + (forward ? 1 : -1) + options.length) % options.length];
+      next.focus();
+      next.click();
+    });
+  });
 
   const closeMenus = () => {
     $$(".nav__group").forEach((group) => {
@@ -367,12 +464,17 @@
 
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".nav__group")) closeMenus();
+    if (!event.target.closest("#settings")) setSettingsOpen(false);
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeMenus();
       closeMobileNav();
+      if (settingsPanel && !settingsPanel.hidden) {
+        setSettingsOpen(false);
+        settingsToggle?.focus();
+      }
     }
   });
 
@@ -1163,9 +1265,8 @@
   /* ------------------------------------------------------------------ init */
 
   const init = () => {
-    const stored = window.localStorage.getItem("ode-theme");
-    const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    applyTheme(stored || preferred);
+    const storedDesign = readCookie(DESIGN_COOKIE);
+    applyDesign(DESIGN_IDS.includes(storedDesign) ? storedDesign : "studio", { persist: false });
 
     renderFilters();
     renderExerciseGrid();

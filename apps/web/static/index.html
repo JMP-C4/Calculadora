@@ -9,8 +9,17 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%230c1726'/%3E%3Cpath d='M11 40c8-19 14 10 22-9s12 9 20-8' fill='none' stroke='%23d8f37c' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
   <script>
     (() => {
+      const DESIGNS = ["studio", "cuaderno", "lienzo"];
+      const readCookie = (name) => {
+        const prefix = name + "=";
+        const entry = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix));
+        return entry ? decodeURIComponent(entry.slice(prefix.length)) : "";
+      };
       try {
-        const saved = localStorage.getItem("ode-theme");
+        const fromCookie = readCookie("ode-design");
+        const design = DESIGNS.includes(fromCookie) ? fromCookie : "studio";
+        document.documentElement.dataset.design = design;
+        const saved = localStorage.getItem("ode-theme:" + design) || localStorage.getItem("ode-theme");
         const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
         document.documentElement.dataset.theme = saved || (dark ? "dark" : "light");
       } catch (_) { /* almacenamiento no disponible */ }
@@ -130,6 +139,39 @@
       </nav>
 
       <div class="topbar__actions">
+        <div class="settings" id="settings">
+          <button class="icon-btn" id="settings-toggle" type="button" aria-label="Configuración de diseño" aria-expanded="false" aria-controls="settings-panel" aria-haspopup="dialog" title="Configuración de diseño">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+          <div class="settings__panel" id="settings-panel" role="dialog" aria-label="Configuración de diseño" hidden>
+            <div class="settings__head">
+              <span class="settings__kicker">Apariencia</span>
+              <strong>Diseño de la interfaz</strong>
+              <p>Elige un estilo; se guarda en este navegador.</p>
+            </div>
+            <div class="settings__options" role="radiogroup" aria-label="Diseño de la interfaz">
+              <button class="design-option" type="button" role="radio" aria-checked="false" data-design="studio">
+                <span class="design-option__preview design-option__preview--studio" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="design-option__copy"><strong>Estudio 3 paneles</strong><small>Biblioteca, lienzo e inspector.</small></span>
+                <span class="design-option__check" aria-hidden="true">✓</span>
+              </button>
+              <button class="design-option" type="button" role="radio" aria-checked="false" data-design="cuaderno">
+                <span class="design-option__preview design-option__preview--cuaderno" aria-hidden="true"><i></i><i></i></span>
+                <span class="design-option__copy"><strong>Cuaderno</strong><small>Papel, serif y margen de notas.</small></span>
+                <span class="design-option__check" aria-hidden="true">✓</span>
+              </button>
+              <button class="design-option" type="button" role="radio" aria-checked="false" data-design="lienzo">
+                <span class="design-option__preview design-option__preview--lienzo" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="design-option__copy"><strong>Lienzo flotante</strong><small>Cuadrícula lila y tarjetas flotantes.</small></span>
+                <span class="design-option__check" aria-hidden="true">✓</span>
+              </button>
+            </div>
+            <p class="settings__foot">Predeterminado: Estudio 3 paneles · <code>ode-design</code> en cookies</p>
+          </div>
+        </div>
         <button class="icon-btn" id="theme-toggle" type="button" aria-label="Cambiar tema" aria-pressed="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
         </button>
