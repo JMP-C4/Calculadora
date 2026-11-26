@@ -77,6 +77,13 @@ _EJEMPLOS = {
         "x_min": 0.0,
         "x_max": 60.0,
     },
+    "reducible exacta": {
+        "ecuacion": r"$$(3xy + y^2)dx + (x^2 + xy)dy = 0$$",
+        "x0": 1.0,
+        "y0": 1.0,
+        "x_min": 0.1,
+        "x_max": 3.0,
+    },
 }
 
 
@@ -90,6 +97,7 @@ def _inicializar_estado() -> None:
         "metodo_input": "Automático",
         "resultado": None,
         "error_resolver": None,
+        "timeout_pendiente": None,
         "historial": [],
         "intervalo_actual": None,
         "tema_oscuro": False,
@@ -129,7 +137,9 @@ def _aplicar_pendientes() -> None:
         st.session_state["_resolver_automatico"] = True
 
 
-def _resolver_actual(*, guardar: bool = True) -> None:
+def _resolver_actual(
+    *, guardar: bool = True, timeout: float = 10.0, reintento: bool = False
+) -> None:
     texto = str(st.session_state.get("ecuacion_input", "")).strip()
     if not texto:
         st.session_state["error_resolver"] = "Escribe una ecuación diferencial."
@@ -150,9 +160,29 @@ def _resolver_actual(*, guardar: bool = True) -> None:
                 x_min=x_min,
                 x_max=x_max,
                 metodo=metodo,
-                timeout=10.0,
+                timeout=timeout,
             )
-    except (EntradaInvalida, SolucionNoDisponible, TiempoAgotado) as exc:
+    except TiempoAgotado as exc:
+        st.session_state["resultado"] = None
+        if reintento:
+            st.session_state["timeout_pendiente"] = None
+            st.session_state["error_resolver"] = (
+                f"{exc} El reintento con un plazo mayor tampoco terminó."
+            )
+        else:
+            st.session_state["timeout_pendiente"] = {
+                "mensaje": f"No se puede graficar: TimeoutError: {exc}",
+                "ecuacion_input": texto,
+                "x0_input": x0,
+                "y0_input": y0,
+                "x_min_input": x_min,
+                "x_max_input": x_max,
+                "metodo_input": st.session_state.get("metodo_input", "Automático"),
+            }
+            st.session_state["error_resolver"] = None
+        st.rerun()
+        return
+    except (EntradaInvalida, SolucionNoDisponible) as exc:
         st.session_state["error_resolver"] = str(exc)
         st.session_state["resultado"] = None
         return
@@ -165,6 +195,7 @@ def _resolver_actual(*, guardar: bool = True) -> None:
         st.session_state["resultado"] = None
         return
 
+    st.session_state["timeout_pendiente"] = None
     st.session_state["resultado"] = resultado
     st.session_state["error_resolver"] = None
     st.session_state["intervalo_actual"] = (x_min, x_max)
@@ -216,6 +247,63 @@ def _ir_al_ejercicio() -> None:
 
     vista = "Salida" if st.session_state.get("resultado") is not None else "Calculadora"
     navegacion.establecer_vista(vista)
+
+
+def _continuar_timeout() -> None:
+    """Reintenta una sola vez con un plazo mayor."""
+
+    pendiente = st.session_state.get("timeout_pendiente")
+    if not pendiente:
+        return
+    for clave in (
+        "ecuacion_input",
+        "x0_input",
+        "y0_input",
+        "x_min_input",
+        "x_max_input",
+        "metodo_input",
+    ):
+        if clave in pendiente:
+            st.session_state[clave] = pendiente[clave]
+    st.session_state["timeout_pendiente"] = None
+    st.session_state["_reintentar_timeout"] = True
+
+
+def _cancelar_timeout() -> None:
+    """Descarta el cálculo pendiente y conserva la interfaz usable."""
+
+    st.session_state["timeout_pendiente"] = None
+    st.session_state["resultado"] = None
+    st.session_state["error_resolver"] = "Operación cancelada por el usuario."
+
+
+def _alerta_timeout() -> None:
+    """Ofrece continuar o cancelar cuando el cálculo agota el tiempo límite."""
+
+    pendiente = st.session_state.get("timeout_pendiente")
+    if not pendiente:
+        return
+    with st.container(border=True):
+        st.error(str(pendiente.get("mensaje", "")), icon=None)
+        st.markdown(
+            "**¿Continuar el cálculo con más tiempo o cancelar la operación?**"
+        )
+        columnas = st.columns([1, 1, 4])
+        with columnas[0]:
+            st.button(
+                "Continuar cálculo",
+                key="edo_timeout_continuar",
+                type="primary",
+                help="Reintenta una vez con un plazo de 90 s.",
+                on_click=_continuar_timeout,
+            )
+        with columnas[1]:
+            st.button(
+                "Cancelar",
+                key="edo_timeout_cancelar",
+                help="Descarta el cálculo y vuelve a la calculadora.",
+                on_click=_cancelar_timeout,
+            )
 
 
 def _instrucciones() -> None:
@@ -380,9 +468,12 @@ def main() -> None:
     )
     _inicializar_estado()
     _aplicar_pendientes()
+    if st.session_state.pop("_reintentar_timeout", False):
+        _resolver_actual(timeout=90.0, reintento=True)
     st.markdown(estilos.css(tema_actual()), unsafe_allow_html=True)
     _cabecera()
     vista = navegacion.barra()
+    _alerta_timeout()
     _barra_lateral()
 
     if st.session_state.pop("_resolver_automatico", False):

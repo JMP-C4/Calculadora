@@ -71,18 +71,36 @@ def test_isoclines_plot_each_level(panel: PlotPanel) -> None:
     assert panel.notice.cget("text") == ""
 
 
-def test_family_mode_plots_five_curves(panel: PlotPanel) -> None:
+def test_family_mode_plots_seven_curves(panel: PlotPanel) -> None:
     _select(panel, PlotMode.FAMILY)
     panel.show_result(_solution_result(), x_min=-1, x_max=1)
-    assert len(panel.axes.lines) == 5
+    assert len(panel.axes.lines) == 7
     assert panel.notice.cget("text") == ""
+
+
+def test_clairaut_draws_envelope_and_tangency(panel: PlotPanel) -> None:
+    resultado = SolveResult(
+        input_text="y = x*y' - (y')**2",
+        general=Solution(form="explicit", expr=C * X - C**2, constant=C),
+        particular=Solution(form="explicit", expr=X - 1),
+        singular_solutions=[Solution(form="explicit", expr=X**2 / 4)],
+    )
+    _select(panel, PlotMode.FAMILY)
+    panel.show_result(resultado, x_min=-4, x_max=4)
+    etiquetas = [linea.get_label() for linea in panel.axes.lines]
+    assert "C = 1" in etiquetas
+    assert "Envolvente singular" in etiquetas
+    assert any(
+        "Tangencia" in str(coleccion.get_label())
+        for coleccion in panel.axes.collections
+    )
 
 
 def test_phase_line_is_plotted_for_autonomous_ode(panel: PlotPanel) -> None:
     _select(panel, PlotMode.PHASE_LINE)
     panel.show_result(_autonomous_result())
     assert panel.axes.lines
-    assert panel.axes.get_xlabel() == "y"
+    assert panel.axes.get_xlabel() == "$y$"
 
 
 def test_equilibria_marks_points(panel: PlotPanel) -> None:

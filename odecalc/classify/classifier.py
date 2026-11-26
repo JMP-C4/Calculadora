@@ -7,6 +7,7 @@ todos los métodos aplicables y asigna una prioridad de resolución.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -37,13 +38,49 @@ _PRIORITY = {
     "riccati": 70,
 }
 
+_EXPLICIT_PRIORITY = {
+    "clairaut": 5,
+    "lagrange": 6,
+    "linear": 10,
+    "separable": 11,
+    "exact": 12,
+    "substitution_linear_combo": 14,
+    "integrating_factor_x": 15,
+    "integrating_factor_y": 16,
+    "integrating_factor_xy": 17,
+    "integrating_factor_x_plus_y": 18,
+    "integrating_factor_x2_plus_y2": 19,
+    "bernoulli": 40,
+    "homogeneous": 50,
+    "reducible_homogeneous": 55,
+    "riccati": 70,
+}
 
-def _match(method: str, name: str, evidence: str, **data: object) -> Match:
+
+def _eval_numeric(expr: sp.Expr, x_val: float, y_val: float) -> complex | None:
+    try:
+        value = complex(expr.evalf(15, subs={X: x_val, Y: y_val}))
+    except Exception:
+        return None
+    if not (math.isfinite(value.real) and math.isfinite(value.imag)):
+        return None
+    return value
+
+
+def _match(
+    method: str,
+    name: str,
+    evidence: str,
+    *,
+    priority_map: dict[str, int] | None = None,
+    **data: object,
+) -> Match:
+    table = priority_map or _PRIORITY
     return Match(
         method=method,
         name=name,
         evidence=evidence,
-        priority=_PRIORITY.get(method, 100),
+        priority=table.get(method, 100),
         data=dict(data),
     )
 
@@ -56,6 +93,16 @@ def separable_parts(rhs: sp.Expr) -> tuple[sp.Expr, sp.Expr] | None:
 
     if not rhs.has(Y):
         return sp.simplify(rhs), sp.Integer(1)
+    if not rhs.has(X):
+        return sp.Integer(1), rhs
+    v11 = _eval_numeric(rhs, 1.3, 0.7)
+    v22 = _eval_numeric(rhs, 2.1, 1.9)
+    v12 = _eval_numeric(rhs, 1.3, 1.9)
+    v21 = _eval_numeric(rhs, 2.1, 0.7)
+    if None not in (v11, v22, v12, v21):
+        scale = max(1.0, abs(v11 * v22), abs(v12 * v21))
+        if abs(v11 * v22 - v12 * v21) > 1e-6 * scale:
+            return None
     try:
         factored = sp.factor(rhs)
         independent, dependent = factored.as_independent(Y)
@@ -71,6 +118,16 @@ def separable_parts(rhs: sp.Expr) -> tuple[sp.Expr, sp.Expr] | None:
 def linear_coeffs(rhs: sp.Expr) -> tuple[sp.Expr, sp.Expr] | None:
     """Devuelve ``(P, Q)`` si ``rhs = -P y + Q`` (forma lineal)."""
 
+    if not rhs.has(Y):
+        return sp.Integer(0), sp.simplify(rhs)
+    for xv in (1.3, -0.7):
+        f0 = _eval_numeric(rhs, xv, 0.5)
+        f1 = _eval_numeric(rhs, xv, 1.5)
+        f2 = _eval_numeric(rhs, xv, 2.5)
+        if None not in (f0, f1, f2):
+            scale = max(1.0, abs(f0), abs(f1), abs(f2))
+            if abs(f2 - 2.0 * f1 + f0) > 1e-6 * scale:
+                return None
     try:
         coefficient = sp.simplify(sp.diff(rhs, Y))
         remainder = sp.simplify(rhs - coefficient * Y)
@@ -165,6 +222,12 @@ def is_exact(m_expr: sp.Expr, n_expr: sp.Expr) -> bool:
 def homogeneous_degree_zero(rhs: sp.Expr) -> bool:
     if not rhs.has(Y):
         return False
+    for xv, yv, tv in ((1.3, 0.7, 2.1), (-1.1, 1.7, 1.5)):
+        f1 = _eval_numeric(rhs, xv, yv)
+        f2 = _eval_numeric(rhs, tv * xv, tv * yv)
+        if f1 is not None and f2 is not None:
+            if abs(f2 - f1) > 1e-6 * max(1.0, abs(f1), abs(f2)):
+                return False
     f = rhs.subs({X: _X0, Y: _Y0})
     try:
         scaled = sp.simplify(f.subs({_X0: _T * _X0, _Y0: _T * _Y0}))
@@ -227,8 +290,32 @@ def substitution_linear_combo(rhs: sp.Expr) -> tuple[sp.Expr, sp.Expr, sp.Expr] 
     if not rhs.has(Y):
         return None
     try:
-        f_x = sp.simplify(sp.diff(rhs, X))
-        f_y = sp.simplify(sp.diff(rhs, Y))
+        f_x = sp.diff(rhs, X)
+        f_y = sp.diff(rhs, Y)
+    except Exception:
+        return None
+    if f_y == 0:
+        return None
+    if f_x != 0:
+        r1 = _eval_numeric(f_x, 1.3, 0.7)
+        d1 = _eval_numeric(f_y, 1.3, 0.7)
+        r2 = _eval_numeric(f_x, -0.9, 1.8)
+        d2 = _eval_numeric(f_y, -0.9, 1.8)
+        if (
+            r1 is not None
+            and d1 is not None
+            and abs(d1) > 1e-12
+            and r2 is not None
+            and d2 is not None
+            and abs(d2) > 1e-12
+        ):
+            q1 = r1 / d1
+            q2 = r2 / d2
+            if abs(q1 - q2) > 1e-6 * max(1.0, abs(q1), abs(q2)):
+                return None
+    try:
+        f_x = sp.simplify(f_x)
+        f_y = sp.simplify(f_y)
     except Exception:
         return None
     if f_y == 0:
@@ -382,11 +469,13 @@ def integrating_factor_candidates(
         except Exception:
             continue
         h_u = _depends_only_on(ratio, u_expr)
-        if h_u is None or h_u == 0:
+        if h_u is None or h_u == 0 or h_u.has(sp.sign, sp.Abs, sp.Piecewise):
             continue
         try:
             integral = sp.integrate(h_u, U)
         except Exception:
+            continue
+        if integral.has(sp.Integral):
             continue
         mu_u = sp.simplify(sp.exp(integral))
         mu = sp.simplify(mu_u.subs(U, u_expr))
@@ -408,12 +497,42 @@ def integrating_factor_candidates(
 # ---------------------------------------------------------------------------
 # Clasificación pública
 # ---------------------------------------------------------------------------
+def _latex_with_prime(expr: sp.Expr) -> str:
+    rendered = sp.latex(expr.subs(DY, sp.Symbol("y'")))
+    return rendered.replace("y'^{", r"\left(y'\right)^{")
+
+
+def _combo_latex(a_expr: sp.Expr, b_expr: sp.Expr) -> str:
+    parts: list[str] = []
+    for coeff, var in ((a_expr, "x"), (b_expr, "y")):
+        coeff_clean = sp.simplify(coeff)
+        if coeff_clean == 0:
+            continue
+        tex = sp.latex(coeff_clean)
+        if coeff_clean == 1:
+            body, sign = var, "+"
+        elif coeff_clean == -1:
+            body, sign = var, "-"
+        elif tex.startswith("-"):
+            body, sign = rf"{tex[1:].lstrip()}\,{var}", "-"
+        else:
+            inner = rf"\left({tex}\right)" if isinstance(coeff_clean, sp.Add) else tex
+            body = f"{inner}{var}" if coeff_clean.is_Integer else rf"{inner}\,{var}"
+            sign = "+"
+        if not parts:
+            parts.append(body if sign == "+" else f"-{body}")
+        else:
+            parts.append(f" + {body}" if sign == "+" else f" - {body}")
+    return "".join(parts) or "0"
+
+
 def classify(parsed: ParsedODE) -> list[Match]:
     """Devuelve todos los métodos aplicables, ordenados por prioridad."""
 
     if parsed.error is not None:
         return []
 
+    priority_map = _PRIORITY if parsed.kind == "differential" else _EXPLICIT_PRIORITY
     matches: list[Match] = []
     rhs = parsed.rhs
 
@@ -426,27 +545,31 @@ def classify(parsed: ParsedODE) -> list[Match]:
             _match(
                 method,
                 label,
-                f"La ecuación se escribe como y = x·φ(y') + ψ(y') con "
-                f"φ(y') = {sp.sstr(phi)} y ψ(y') = {sp.sstr(psi)}.",
+                rf"La ecuación se escribe como $y = x\,\varphi(y') + \psi(y')$ con "
+                rf"$\varphi(y') = {_latex_with_prime(phi)}$ y $\psi(y') = {_latex_with_prime(psi)}$.",
+                priority_map=priority_map,
                 phi=phi,
                 psi=psi,
             )
         )
 
     exact = exact_parts(parsed)
-    if exact is not None and is_exact(*exact):
+    exact_flag = exact is not None and is_exact(*exact)
+    if exact_flag and exact is not None:
         m_expr, n_expr = exact
+        mixed = sp.latex(sp.simplify(sp.diff(m_expr, Y)))
         matches.append(
             _match(
                 "exact",
                 "Exacta",
-                f"∂M/∂y = ∂N/∂x = {sp.sstr(sp.simplify(sp.diff(m_expr, Y)))}.",
+                rf"$\frac{{\partial M}}{{\partial y}} = \frac{{\partial N}}{{\partial x}} = {mixed}$.",
+                priority_map=priority_map,
                 M=m_expr,
                 N=n_expr,
             )
         )
 
-    if exact is not None and not is_exact(*exact):
+    if exact is not None and not exact_flag:
         m_expr, n_expr = exact
         for name, u_expr, mu in integrating_factor_candidates(m_expr, n_expr):
             labels = {
@@ -460,8 +583,9 @@ def classify(parsed: ParsedODE) -> list[Match]:
                 _match(
                     name,
                     labels[name],
-                    f"La razón que define μ depende sólo de u = {sp.sstr(u_expr)}; "
-                    f"μ = {sp.sstr(mu)} hace exacta la ecuación.",
+                    rf"La razón que define $\mu$ depende sólo de $u = {sp.latex(u_expr)}$; "
+                    rf"$\mu = {sp.latex(mu)}$ hace exacta la ecuación.",
+                    priority_map=priority_map,
                     M=m_expr,
                     N=n_expr,
                     mu=mu,
@@ -477,8 +601,9 @@ def classify(parsed: ParsedODE) -> list[Match]:
                 _match(
                     "linear",
                     "Lineal de primer orden",
-                    f"Se escribe como y' + P(x)y = Q(x) con P = {sp.sstr(p_expr)} "
-                    f"y Q = {sp.sstr(q_expr)}.",
+                    rf"Se escribe como $y' + P(x)y = Q(x)$ con $P(x) = {sp.latex(p_expr)}$ "
+                    rf"y $Q(x) = {sp.latex(q_expr)}$.",
+                    priority_map=priority_map,
                     P=p_expr,
                     Q=q_expr,
                 )
@@ -491,8 +616,9 @@ def classify(parsed: ParsedODE) -> list[Match]:
                 _match(
                     "separable",
                     "Separable",
-                    f"El lado derecho factoriza como g(x)·h(y) con "
-                    f"g = {sp.sstr(g_expr)} y h = {sp.sstr(h_expr)}.",
+                    rf"El lado derecho factoriza como $g(x)\cdot h(y)$ con "
+                    rf"$g(x) = {sp.latex(g_expr)}$ y $h(y) = {sp.latex(h_expr)}$.",
+                    priority_map=priority_map,
                     g=g_expr,
                     h=h_expr,
                 )
@@ -505,8 +631,9 @@ def classify(parsed: ParsedODE) -> list[Match]:
                 _match(
                     "bernoulli",
                     "Bernoulli",
-                    f"Tiene la forma y' + P(x)y = Q(x)yⁿ con P = {sp.sstr(p_expr)}, "
-                    f"Q = {sp.sstr(q_expr)} y n = {sp.sstr(n)}.",
+                    rf"Tiene la forma $y' + P(x)y = Q(x)y^n$ con $P(x) = {sp.latex(p_expr)}$, "
+                    rf"$Q(x) = {sp.latex(q_expr)}$ y $n = {sp.latex(n)}$.",
+                    priority_map=priority_map,
                     P=p_expr,
                     Q=q_expr,
                     n=n,
@@ -518,8 +645,9 @@ def classify(parsed: ParsedODE) -> list[Match]:
                 _match(
                     "homogeneous",
                     "Homogénea de grado cero",
-                    "f(tx, ty) = f(x, y): la sustitución y = u x reduce la EDO "
-                    "a una separable en u y x.",
+                    r"$f(tx, ty) = f(x, y)$: la sustitución $y = u x$ reduce la EDO "
+                    r"a una separable en $u$ y $x$.",
+                    priority_map=priority_map,
                 )
             )
 
@@ -537,7 +665,8 @@ def classify(parsed: ParsedODE) -> list[Match]:
                     "reducible_homogeneous",
                     "Reducible a homogénea",
                     f"Es un cociente de rectas y {kind}; una traslación o la "
-                    "sustitución u = a x + b y la vuelve homogénea/separable.",
+                    r"sustitución $u = a x + b y$ la vuelve homogénea/separable.",
+                    priority_map=priority_map,
                     a1=a1,
                     b1=b1,
                     c1=c1,
@@ -547,24 +676,27 @@ def classify(parsed: ParsedODE) -> list[Match]:
                 )
             )
 
-        substitution = substitution_linear_combo(rhs)
-        # Cuando a = 0 la sustitución es simplemente u = b y y la ecuación ya
-        # es separable; no se duplica el método (y se evita elegir una rama
-        # arbitraria antes que la solución separable completa).
-        if substitution is not None and sp.simplify(substitution[0]) != 0:
-            a, b, g_u = substitution
-            matches.append(
-                _match(
-                    "substitution_linear_combo",
-                    "Sustitución u = a x + b y",
-                    f"El lado derecho depende sólo de u = {sp.sstr(a)}x + "
-                    f"{sp.sstr(b)}y; entonces u' = {sp.sstr(a)} + "
-                    f"{sp.sstr(b)}·G(u).",
-                    a=a,
-                    b=b,
-                    G=g_u,
+        if rhs.has(X):
+            substitution = substitution_linear_combo(rhs)
+            # Cuando a = 0 la sustitución es simplemente u = b y y la ecuación ya
+            # es separable; no se duplica el método (y se evita elegir una rama
+            # arbitraria antes que la solución separable completa).
+            if substitution is not None and sp.simplify(substitution[0]) != 0:
+                a, b, g_u = substitution
+                b_clean = sp.simplify(b)
+                b_prefix = "" if b_clean == 1 else "-" if b_clean == -1 else rf"{sp.latex(b_clean)}\cdot "
+                matches.append(
+                    _match(
+                        "substitution_linear_combo",
+                        "Sustitución u = a x + b y",
+                        rf"El lado derecho depende sólo de $u = {_combo_latex(a, b)}$; "
+                        rf"entonces $u' = {sp.latex(a)} + {b_prefix}G(u)$.",
+                        priority_map=priority_map,
+                        a=a,
+                        b=b,
+                        G=g_u,
+                    )
                 )
-            )
 
         riccati = riccati_coeffs(rhs)
         if riccati is not None:
@@ -573,8 +705,9 @@ def classify(parsed: ParsedODE) -> list[Match]:
                 _match(
                     "riccati",
                     "Riccati",
-                    f"Es de la forma y' = q₀ + q₁y + q₂y² con q₀ = {sp.sstr(q0)}, "
-                    f"q₁ = {sp.sstr(q1)} y q₂ = {sp.sstr(q2)}.",
+                    rf"Es de la forma $y' = q_0 + q_1 y + q_2 y^2$ con $q_0 = {sp.latex(q0)}$, "
+                    rf"$q_1 = {sp.latex(q1)}$ y $q_2 = {sp.latex(q2)}$.",
+                    priority_map=priority_map,
                     q0=q0,
                     q1=q1,
                     q2=q2,

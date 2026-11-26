@@ -11,8 +11,14 @@ import re
 from dataclasses import dataclass
 
 import sympy as sp
+from sympy.parsing.sympy_parser import parse_expr
 
-from odecalc.parsing.parser import latex_to_plain
+from odecalc.parsing.parser import (
+    _GLOBAL_DICT,
+    _TRANSFORMATIONS,
+    _security_check,
+    latex_to_plain,
+)
 
 x = sp.Symbol("x", real=True)
 y = sp.Function("y")(x)
@@ -41,7 +47,9 @@ _ALLOWED_LOCALS: dict[str, object] = {
     "Integral": sp.Integral,
 }
 
-_FIRST_ORDER_LHS = re.compile(r"^(?:dy/dx|y'|y'\(x\)|dy\(x\)/dx)$")
+_FIRST_ORDER_LHS = re.compile(
+    r"^(?:\(dy/dx\)|dy/dx|y'|y'\(x\)|dy\(x\)/dx)$"
+)
 _HIGHER_ORDER_PATTERNS = (
     re.compile(r"d\^?[2-9]y/dx\^?[2-9]"),
     re.compile(r"d[2-9]y/dx[2-9]"),
@@ -125,8 +133,18 @@ def parse_ode(text: str) -> ParseResult:
     if not rhs_text:
         return _error("El lado derecho de la ecuación está vacío.")
 
+    security_error = _security_check(rhs_text)
+    if security_error is not None:
+        return _error(security_error)
+
     try:
-        rhs = sp.sympify(rhs_text, locals=_ALLOWED_LOCALS)
+        rhs = parse_expr(
+            rhs_text,
+            local_dict=_ALLOWED_LOCALS,
+            global_dict=_GLOBAL_DICT,
+            transformations=_TRANSFORMATIONS,
+            evaluate=True,
+        )
     except (sp.SympifyError, SyntaxError, TypeError, ValueError) as exc:
         return _error(f"Sintaxis inválida en el lado derecho: {exc}")
 

@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 import sympy as sp
 
-from odecalc.symbols import X, Y
+from odecalc.symbols import X, Y, lambdify_modules
 
 from core.clasificador import clasificar, tipo_principal
 from core.existencia import analizar_existencia
@@ -24,6 +24,7 @@ from core.solver_numerico import integrar_intervalo
 from core.solver_simbolico import resolver_motor
 from core.tipos import (
     Certificado,
+    Ecuacion,
     EntradaInvalida,
     ResultadoNumerico,
     ResultadoSolucion,
@@ -41,8 +42,10 @@ def _resultado_numerico(
     x_min: float,
     x_max: float,
     motivo: str,
+    ecuacion: Ecuacion | None = None,
 ) -> ResultadoSolucion:
-    ecuacion = parsear(texto)
+    if ecuacion is None:
+        ecuacion = parsear(texto)
     numerico = integrar_intervalo(ecuacion.rhs, x0, y0, x_min, x_max)
     if not numerico.exito:
         raise SolucionNoDisponible(
@@ -92,10 +95,13 @@ def _adjuntar_numerico(
     resultado: ResultadoSolucion,
     x_min: float,
     x_max: float,
+    *,
+    ecuacion: Ecuacion | None = None,
 ) -> None:
     if resultado.numerico is not None or resultado.x0 is None or resultado.y0 is None:
         return
-    ecuacion = parsear(resultado.ecuacion_texto)
+    if ecuacion is None:
+        ecuacion = parsear(resultado.ecuacion_texto)
     numerico = integrar_intervalo(
         ecuacion.rhs, resultado.x0, resultado.y0, x_min, x_max
     )
@@ -159,9 +165,10 @@ def resolver(
             x0=x0,
             y0=y0,
             intervalo=(x_min, x_max),
+            ecuacion=ecuacion,
         )
         if incluir_numerico and x0 is not None and y0 is not None:
-            _adjuntar_numerico(resultado, x_min, x_max)
+            _adjuntar_numerico(resultado, x_min, x_max, ecuacion=ecuacion)
         if resultado.particular_latex == "" and x0 is not None:
             resultado.advertencias.append(
                 "La solución general no permitió imponer la condición inicial "
@@ -196,7 +203,27 @@ def resolver(
         x_min=float(x_min),
         x_max=float(x_max),
         motivo=motivo or "Se usó el respaldo numérico porque no hubo forma cerrada verificable.",
+        ecuacion=ecuacion,
     )
+
+
+def _evaluar_curva_expresion(
+    expresion: sp.Expr,
+    x_min: float,
+    x_max: float,
+    n_points: int,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    try:
+        funcion = sp.lambdify(X, expresion, modules=lambdify_modules())
+        xs = np.linspace(float(x_min), float(x_max), max(int(n_points), 2))
+        with np.errstate(all="ignore"):
+            raw = np.asarray(funcion(xs), dtype=complex)
+        if raw.shape != xs.shape:
+            raw = np.broadcast_to(raw, xs.shape)
+        mascara = np.isfinite(raw.real) & np.isfinite(raw.imag) & (np.abs(raw.imag) <= 1e-9)
+        return xs[mascara], raw.real[mascara].astype(float)
+    except Exception:
+        return None
 
 
 def curva_solucion(
@@ -208,39 +235,70 @@ def curva_solucion(
 ) -> tuple[np.ndarray, np.ndarray] | None:
     """Devuelve puntos ``(x, y)`` para dibujar la solución."""
 
-    if resultado.numerico is not None and resultado.numerico.exito:
+    def_min, def_max = (
+        resultado.intervalo if resultado.intervalo is not None else (-5.0, 5.0)
+    )
+    req_min = float(def_min if x_min is None else x_min)
+    req_max = float(def_max if x_max is None else x_max)
+    rango_personalizado = (
+        (x_min is not None and not math.isclose(req_min, float(def_min), rel_tol=0.0, abs_tol=1e-9))
+        or (x_max is not None and not math.isclose(req_max, float(def_max), rel_tol=0.0, abs_tol=1e-9))
+    )
+
+    if not rango_personalizado and resultado.numerico is not None and resultado.numerico.exito:
         return (
             np.asarray(resultado.numerico.x, dtype=float),
             np.asarray(resultado.numerico.y, dtype=float),
         )
+
     solucion = resultado.solucion
     expresion = getattr(solucion, "expr", None)
-    if expresion is None or not getattr(solucion, "is_explicit", False):
-        return None
-    if expresion.free_symbols - {X, Y}:
-        return None
-    if x_min is None or x_max is None:
-        if resultado.intervalo is None:
-            x_min, x_max = -5.0, 5.0
-        else:
-            x_min, x_max = resultado.intervalo
-    try:
-        funcion = sp.lambdify(X, expresion, modules=["numpy"])
-        xs = np.linspace(float(x_min), float(x_max), max(int(n_points), 2))
-        with np.errstate(all="ignore"):
-            ys = np.asarray(funcion(xs), dtype=float)
-        if ys.shape != xs.shape:
-            ys = np.broadcast_to(ys, xs.shape).astype(float)
-        mascara = np.isfinite(ys)
-        return xs[mascara], ys[mascara]
-    except Exception:
-        return None
+    tiene_simbolica = (
+        expresion is not None
+        and getattr(solucion, "is_explicit", False)
+        and not (expresion.free_symbols - {X, Y})
+    )
+    if tiene_simbolica:
+        curva = _evaluar_curva_expresion(expresion, req_min, req_max, n_points)
+        if curva is not None:
+            return curva
+
+    if resultado.numerico is not None and resultado.numerico.exito:
+        nx = np.asarray(resultado.numerico.x, dtype=float)
+        ny = np.asarray(resultado.numerico.y, dtype=float)
+        if (
+            rango_personalizado
+            and nx.size > 0
+            and not resultado.numerico.explosion
+            and resultado.x0 is not None
+            and resultado.y0 is not None
+            and req_min <= resultado.x0 <= req_max
+            and (req_min < float(nx[0]) - 1e-6 or req_max > float(nx[-1]) + 1e-6)
+        ):
+            try:
+                ecuacion = parsear(resultado.ecuacion_texto)
+                recalculado = integrar_intervalo(
+                    ecuacion.rhs,
+                    float(resultado.x0),
+                    float(resultado.y0),
+                    req_min,
+                    req_max,
+                    n_points=n_points,
+                )
+                if recalculado.exito:
+                    return np.asarray(recalculado.x, dtype=float), np.asarray(recalculado.y, dtype=float)
+            except Exception:
+                pass
+        mascara = (nx >= req_min) & (nx <= req_max)
+        return nx[mascara], ny[mascara]
+
+    return None
 
 
 def curvas_familia(
     resultado: ResultadoSolucion,
     *,
-    constantes: tuple[float, ...] = (-2.0, -1.0, 0.0, 1.0, 2.0),
+    constantes: tuple[float, ...] = (-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0),
     n_points: int = 400,
 ) -> list[tuple[np.ndarray, np.ndarray, str]]:
     """Puntos de la familia general al variar la constante de integración."""
@@ -267,7 +325,7 @@ def curvas_familia(
     for valor in constantes:
         try:
             expr = expresion if constante is None else expresion.subs(constante, float(valor))
-            funcion = sp.lambdify(X, expr, modules=["numpy"])
+            funcion = sp.lambdify(X, expr, modules=lambdify_modules())
             with np.errstate(all="ignore"):
                 ys = np.asarray(funcion(xs), dtype=float)
             if ys.shape != xs.shape:

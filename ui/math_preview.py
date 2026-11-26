@@ -9,6 +9,8 @@ from typing import Any
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from core.notacion import adaptar_latex_mathtext
+
 _PLACEHOLDER = r"$\frac{dy}{dx} = f(x, y)$"
 
 
@@ -25,10 +27,18 @@ def _format_number(value: Any) -> str:
 class MathPreview(ttk.Frame):
     """Figura Matplotlib que renderiza LaTeX con ``mathtext``."""
 
-    def __init__(self, master: tk.Misc | None = None, **kwargs) -> None:
+    def __init__(
+        self,
+        master: tk.Misc | None = None,
+        *,
+        figsize: tuple[float, float] = (5.0, 1.5),
+        fontsize: int = 16,
+        **kwargs,
+    ) -> None:
         super().__init__(master, **kwargs)
 
-        self.figure = Figure(figsize=(5.0, 1.5), dpi=100)
+        self._fontsize = fontsize
+        self.figure = Figure(figsize=figsize, dpi=100)
         self.axes = self.figure.add_subplot(111)
         self.axes.set_axis_off()
 
@@ -47,22 +57,29 @@ class MathPreview(ttk.Frame):
             latex_str,
             ha="center",
             va="center",
-            fontsize=16,
+            fontsize=self._fontsize,
             transform=self.axes.transAxes,
         )
         self.figure.tight_layout(pad=0.2)
-        self.canvas.draw_idle()
+        try:
+            self.canvas.draw_idle()
+        except Exception:  # pragma: no cover - defensa gráfica ante LaTeX incompleto
+            pass
         self._current_latex = latex_str
 
     def render(self, latex_str: str, conditions: Any = None) -> None:
-        """Renderiza ``latex_str``; si hay condiciones, las añade debajo."""
+        """Renderiza ``latex_str``; si hay condiciones, las añade en notación estándar."""
 
         expression = (latex_str or "").strip()
         if not expression:
             self.show_placeholder()
             return
 
-        display = expression
+        adapted = adaptar_latex_mathtext(expression)
+        if not adapted:
+            self.show_placeholder()
+            return
+
         values = None
         if conditions is not None:
             x0 = getattr(conditions, "x0", None)
@@ -70,11 +87,7 @@ class MathPreview(ttk.Frame):
             if x0 is not None and y0 is not None:
                 values = rf"y({_format_number(x0)}) = {_format_number(y0)}"
 
-        if not display.startswith("$"):
-            display = f"${display}$"
-        if values is not None:
-            display = display[:-1] + rf",\quad {values}$"
-
+        display = f"${adapted}$" if values is None else rf"${adapted},\quad {values}$"
         self._draw(display)
 
     def show_placeholder(self) -> None:

@@ -14,7 +14,7 @@ import sympy as sp
 
 from odecalc.models import Solution as SolucionMotor
 from odecalc.models import SolveResult as ResultadoMotor
-from odecalc.symbols import X, Y
+from odecalc.symbols import X, Y, lambdify_modules
 from odecalc.verify import verify_solution
 from odecalc.verify.verifier import simplify_residual
 
@@ -43,7 +43,7 @@ def _evaluar_residuo(residual: sp.Expr, *, semilla: int = 42) -> float | None:
     if simbolos - {X, Y}:
         return None
     try:
-        funcion = sp.lambdify((X, Y), simplificado, modules=["numpy"])
+        funcion = sp.lambdify((X, Y), simplificado, modules=lambdify_modules())
     except Exception:
         return None
     generador = np.random.default_rng(semilla)
@@ -152,7 +152,7 @@ def certificar_numerico(
         )
 
     try:
-        f = sp.lambdify((X, Y), rhs, modules=["numpy"])
+        f = sp.lambdify((X, Y), rhs, modules=lambdify_modules())
         x = np.asarray(resultado.x, dtype=float)
         y = np.asarray(resultado.y, dtype=float)
         derivada = np.gradient(y, x)

@@ -6,7 +6,9 @@ import sympy as sp
 
 from odecalc.classify.classifier import substitution_linear_combo
 from odecalc.methods.common import (
+    _signed_term_latex,
     explicit_solution,
+    format_linear_combo_latex,
     implicit_solution,
     make_step,
     safe_integrate,
@@ -30,25 +32,30 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
     if b == 0:
         raise ValueError("La sustitución lineal requiere b ≠ 0.")
 
+    g_tex = sp.latex(g_u)
+    g_arg = rf"\left({g_tex}\right)" if isinstance(g_u, sp.Add) else g_tex
+    b_term = _signed_term_latex(b, g_arg, include_plus=(a != 0))
+    rhs_u = f"{sp.latex(a)}{b_term}" if a != 0 else b_term.lstrip()
+
     steps: list[Step] = [
         make_step(
             1,
             "Identificar la sustitución",
-            f"u = {sp.latex(a)}x + {sp.latex(b)}y",
-            "El lado derecho depende de x e y únicamente a través de la "
-            f"combinación u. Entonces y' = G(u) con G(u) = {sp.latex(g_u)}.",
+            f"u = {format_linear_combo_latex(a, b)}",
+            r"El lado derecho depende de $x$ e $y$ únicamente a través de la "
+            rf"combinación $u$. Entonces $y' = G(u)$ con $G(u) = {g_tex}$.",
         ),
         make_step(
             2,
             "Derivar la sustitución",
             r"\frac{du}{dx} = a + b\,\frac{dy}{dx}",
-            "Se deriva u = ax + by respecto a x.",
+            r"Se deriva $u = ax + by$ respecto a $x$.",
         ),
         make_step(
             3,
             "Transformar la EDO",
-            rf"\frac{{du}}{{dx}} = {sp.latex(a)} + {sp.latex(b)}\,{sp.latex(g_u)}",
-            "Al sustituir y' = G(u) se obtiene una EDO separable en u y x.",
+            rf"\frac{{du}}{{dx}} = {rhs_u}",
+            r"Al sustituir $y' = G(u)$ se obtiene una EDO separable en $u$ y $x$.",
         ),
     ]
 
@@ -59,7 +66,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                 4,
                 "Integrar",
                 r"u = C \quad\Longrightarrow\quad y = \frac{C - ax}{b}",
-                "Si u' = 0, u es constante y la solución es una recta.",
+                r"Si $u' = 0$, $u$ es constante y la solución es una recta.",
             )
         )
         return explicit_solution((C - a * X) / b), steps, []
@@ -69,7 +76,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             4,
             "Separar variables",
             rf"\frac{{du}}{{{sp.latex(denominator)}}} = dx",
-            "La ecuación es separable: todo depende de u a la izquierda y de x "
+            r"La ecuación es separable: todo depende de $u$ a la izquierda y de $x$ "
             "a la derecha.",
         )
     )
@@ -81,7 +88,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             5,
             "Integrar",
             f"{sp.latex(integral)} = x + C",
-            "Se integra respecto a u y respecto a x.",
+            r"Se integra respecto a $u$ y respecto a $x$.",
         )
     )
 
@@ -100,7 +107,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                 6,
                 "Volver a y",
                 sp.latex(sp.Eq(Y, solution)),
-                "Se sustituye u = ax + by y se despeja y.",
+                r"Se sustituye $u = ax + by$ y se despeja $y$.",
             )
         )
         return explicit_solution(solution), steps, []
@@ -111,7 +118,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             6,
             "Escribir la solución implícita",
             sp.latex(potential) + " = C",
-            "No se pudo despejar u; se conserva la relación implícita.",
+            r"No se pudo despejar $u$; se conserva la relación implícita.",
         )
     )
     return implicit_solution(potential), steps, []

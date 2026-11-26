@@ -8,19 +8,14 @@ from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from core.notacion import adaptar_latex_mathtext
 from math_engine.step_generator import SolutionStep
 
 
 def _sanitize_latex(latex_str: str) -> str:
     """Adapta comandos LaTeX no soportados por ``mathtext``."""
 
-    return (
-        latex_str.replace(r"\Rightarrow", r"\rightarrow")
-        .replace(r"\implies", r"\rightarrow")
-        .replace(r"\dfrac", r"\frac")
-        .replace(r"\left", "")
-        .replace(r"\right", "")
-    )
+    return adaptar_latex_mathtext(latex_str)
 
 
 class StepByStepPanel(ttk.Frame):

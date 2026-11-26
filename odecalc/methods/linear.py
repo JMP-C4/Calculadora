@@ -7,6 +7,7 @@ import sympy as sp
 from odecalc.classify.classifier import linear_coeffs
 from odecalc.methods.common import (
     explicit_solution,
+    format_linear_equation,
     make_step,
     safe_integrate,
     safe_simplify,
@@ -30,8 +31,8 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
         make_step(
             1,
             "Escribir la forma estándar",
-            f"{sp.latex(sp.Symbol('y'))}' + {sp.latex(p_expr)}\\,y = {sp.latex(q_expr)}",
-            "Toda EDO lineal de primer orden se escribe como y' + P(x)y = Q(x).",
+            format_linear_equation("y'", p_expr, "y", q_expr),
+            "Toda EDO lineal de primer orden se escribe como $y' + P(x)y = Q(x)$.",
             ascii_expr=f"y' + ({sp.sstr(p_expr)}) y = {sp.sstr(q_expr)}",
         )
     ]
@@ -44,7 +45,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             "Calcular el factor integrante",
             rf"\mu(x) = e^{{\int P(x)\,dx}} = {sp.latex(mu)}",
             "El factor integrante convierte el lado izquierdo en la derivada "
-            "del producto μ(x)y.",
+            r"del producto $\mu(x)\,y$.",
             ascii_expr=f"mu(x) = exp({sp.sstr(integral_p)}) = {sp.sstr(mu)}",
         )
     )
@@ -53,8 +54,8 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             3,
             "Multiplicar por μ(x)",
             rf"\left(\mu(x)y\right)' = {sp.latex(safe_simplify(mu * q_expr))}",
-            "Al multiplicar la ecuación por μ(x), el miembro izquierdo es "
-            "exactamente (μy)'.",
+            r"Al multiplicar la ecuación por $\mu(x)$, el miembro izquierdo es "
+            r"exactamente $(\mu y)'$.",
             ascii_expr=f"(mu*y)' = {sp.sstr(safe_simplify(mu * q_expr))}",
         )
     )
@@ -65,8 +66,8 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             4,
             "Integrar",
             rf"\mu(x)y = {sp.latex(integral_muq)} + C",
-            "Se integra (μy)' respecto a x. Si la integral no es elemental, "
-            "se deja indicada explícitamente en x.",
+            r"Se integra $(\mu y)'$ respecto a $x$. Si la integral no es elemental, "
+            r"se deja indicada explícitamente en $x$.",
             ascii_expr=f"mu*y = {sp.sstr(integral_muq)} + C",
         )
     )
@@ -77,7 +78,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             5,
             "Despejar y",
             sp.latex(sp.Eq(Y, general)),
-            "Se divide entre μ(x), que nunca se anula en el dominio real.",
+            r"Se divide entre $\mu(x)$, que nunca se anula en el dominio real.",
         )
     )
     if integral_muq.has(sp.Integral):

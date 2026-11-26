@@ -105,6 +105,12 @@ def _normalizar(texto: str) -> str:
     limpio = limpio.replace("\\cdot", "*").replace("\\times", "*")
     limpio = re.sub(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r"((\1)/(\2))", limpio)
     limpio = limpio.replace("y(x)", "y")
+    limpio = re.sub(
+        r"(?<=[A-Za-z0-9_\)])(?=y\s*[′']|d\s*y\s*/\s*d\s*x)",
+        " ",
+        limpio,
+        flags=re.IGNORECASE,
+    )
     limpio = limpio.replace("y′", "Dy").replace("y'", "Dy")
     limpio = re.sub(r"d\s*y\s*/\s*d\s*x", "Dy", limpio, flags=re.IGNORECASE)
     limpio = re.sub(r"\bsen\b", "sin", limpio, flags=re.IGNORECASE)

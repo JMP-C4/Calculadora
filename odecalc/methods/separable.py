@@ -37,8 +37,8 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             1,
             "Identificar una EDO separable",
             sp.latex(sp.Eq(sp.Symbol("y'"), rhs)),
-            f"El lado derecho factoriza como g(x)h(y) con g(x) = {sp.sstr(g_expr)} "
-            f"y h(y) = {sp.sstr(h_expr)}.",
+            rf"El lado derecho factoriza como $g(x)h(y)$ con $g(x) = {sp.latex(g_expr)}$ "
+            rf"y $h(y) = {sp.latex(h_expr)}$.",
         )
     )
 
@@ -48,7 +48,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                 2,
                 "Integrar directamente",
                 r"y = C",
-                "Si h(y) = 0 entonces y' = 0 y toda función constante es solución.",
+                r"Si $h(y) = 0$ entonces $y' = 0$ y toda función constante es solución.",
             )
         )
         return explicit_solution(C), steps, []
@@ -58,7 +58,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             2,
             "Separar variables",
             rf"\frac{{1}}{{{sp.latex(h_expr)}}}\,dy = {sp.latex(g_expr)}\,dx",
-            "Se divide entre h(y) (suponiendo h(y) ≠ 0) y se multiplica por dx.",
+            r"Se divide entre $h(y)$ (suponiendo $h(y) \neq 0$) y se multiplica por $dx$.",
         )
     )
 
@@ -73,6 +73,19 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
         )
     )
 
+    lost = equilibrium_solutions(h_expr)
+    if left.has(sp.Piecewise, sp.Abs) or right.has(sp.Piecewise, sp.Abs):
+        potential = left - right if left.has(sp.Piecewise) else safe_simplify(left - right)
+        steps.append(
+            make_step(
+                4,
+                "Escribir la solución implícita",
+                sp.latex(potential) + " = C",
+                "Se conserva la relación implícita por tramos para preservar todas las ramas reales.",
+            )
+        )
+        return implicit_solution(potential), steps, lost
+
     relation = safe_simplify(left - right - C)
     solutions_y = safe_solve_expr(relation, Y)
     explicit_branches = list(
@@ -83,8 +96,6 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
         )
     )
     explicit = explicit_branches[0] if len(explicit_branches) == 1 else None
-
-    lost = equilibrium_solutions(h_expr)
     if len(explicit_branches) > 1:
         potential = safe_simplify(left - right)
         steps.append(

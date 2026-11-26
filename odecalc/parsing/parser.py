@@ -243,8 +243,8 @@ def _read_latex_braced(text: str, index: int) -> tuple[str, int]:
     raise ValueError("Hay una llave LaTeX sin cerrar. Revisa la ecuación.")
 
 
-def _read_latex_group(text: str, index: int) -> tuple[str, int]:
-    """Lee un argumento LaTeX: ``{...}``, ``(...)``, ``\\comando`` o un carácter."""
+def _read_unsigned_latex_group(text: str, index: int) -> tuple[str, int]:
+    """Lee un argumento LaTeX sin signo: ``{...}``, ``(...)``, ``\\comando``, número o símbolo."""
 
     position = index
     while position < len(text) and text[position].isspace():
@@ -258,7 +258,37 @@ def _read_latex_group(text: str, index: int) -> tuple[str, int]:
     if text[position] == "\\":
         _, end = _read_latex_command(text, position)
         return text[position:end], end
+    if text[position].isdigit():
+        start = position
+        while position < len(text) and text[position].isdigit():
+            position += 1
+        if (
+            position + 1 < len(text)
+            and text[position] == "."
+            and text[position + 1].isdigit()
+        ):
+            position += 1
+            while position < len(text) and text[position].isdigit():
+                position += 1
+        return text[start:position], position
     return text[position], position + 1
+
+
+def _read_latex_group(text: str, index: int) -> tuple[str, int]:
+    """Lee un argumento LaTeX: ``{...}``, ``(...)``, ``\\comando``, signo o carácter."""
+
+    position = index
+    while position < len(text) and text[position].isspace():
+        position += 1
+    if position >= len(text):
+        return "", position
+    if text[position] in "+-":
+        sign = text[position]
+        body, end = _read_unsigned_latex_group(text, position + 1)
+        if body:
+            return f"{sign}{body}", end
+        return sign, position + 1
+    return _read_unsigned_latex_group(text, position)
 
 
 def _read_latex_parentheses(text: str, index: int) -> tuple[str, int]:
@@ -294,8 +324,8 @@ def _derivative_fraction(numerator: str, denominator: str) -> str | None:
     if top_order != bottom_order:
         return None
     if top_order == 1:
-        return "dy/dx"
-    return f"d{top_order}y/dx{top_order}"
+        return "(dy/dx)"
+    return f"(d{top_order}y/dx{top_order})"
 
 
 def _latex_to_plain(text: str) -> str:
@@ -395,6 +425,8 @@ def _latex_to_plain(text: str) -> str:
                 exponent_raw, cursor = _read_latex_group(source, cursor + 1)
                 exponent = _latex_to_plain(exponent_raw)
                 position = cursor
+                while cursor < len(source) and source[cursor].isspace():
+                    cursor += 1
             argument = None
             if cursor < len(source) and source[cursor] == "(":
                 argument_raw, position = _read_latex_parentheses(source, cursor)
@@ -402,9 +434,14 @@ def _latex_to_plain(text: str) -> str:
             elif cursor < len(source) and source[cursor] == "{":
                 argument_raw, position = _read_latex_braced(source, cursor)
                 argument = _latex_to_plain(argument_raw)
-            elif cursor < len(source) and source[cursor] in "xyz0123456789":
-                argument = source[cursor]
-                position = cursor + 1
+            elif cursor < len(source) and source[cursor].isalnum():
+                start_arg = cursor
+                while cursor < len(source) and (
+                    source[cursor].isalnum() or source[cursor] == "."
+                ):
+                    cursor += 1
+                argument = _latex_to_plain(source[start_arg:cursor])
+                position = cursor
             if argument is None:
                 core = command
             else:
@@ -433,7 +470,52 @@ def _latex_to_plain(text: str) -> str:
         # seguridad lo rechace con un mensaje claro.
         output.append(f"\\{command}")
 
-    return "".join(output)
+    return _replace_abs_bars("".join(output))
+
+
+def _replace_abs_bars(text: str) -> str:
+    """Convierte barras de valor absoluto ``|...|`` en llamadas ``Abs(...)``."""
+
+    if "|" not in text:
+        return text
+    out: list[str] = []
+    open_bars = 0
+    prev_nonspace = ""
+    for char in text:
+        if char == "|":
+            if open_bars == 0 or prev_nonspace in ("", "=", "(", ",", "+", "-", "*", "/", "^"):
+                out.append("Abs(")
+                open_bars += 1
+                prev_nonspace = "("
+            else:
+                out.append(")")
+                open_bars -= 1
+                prev_nonspace = ")"
+        else:
+            out.append(char)
+            if not char.isspace():
+                prev_nonspace = char
+    if open_bars != 0:
+        raise ValueError("Hay barras de valor absoluto |...| sin cerrar.")
+    return "".join(out)
+
+
+def _substitute_with_spacing(pattern: re.Pattern[str], token: str, text: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        start, end = match.span()
+        prefix = (
+            " "
+            if start > 0 and (text[start - 1].isalnum() or text[start - 1] in "_)")
+            else ""
+        )
+        suffix = (
+            " "
+            if end < len(text) and (text[end].isalnum() or text[end] in "_(")
+            else ""
+        )
+        return f"{prefix}{token}{suffix}"
+
+    return pattern.sub(repl, text)
 
 
 def _normalise(text: str) -> str:
@@ -443,6 +525,7 @@ def _normalise(text: str) -> str:
         "−": "-",
         "–": "-",
         "—": "-",
+        "′": "'",
         "·": "*",
         "×": "*",
         "²": "**2",
@@ -522,7 +605,22 @@ def _latex_explicit(rhs: sp.Expr) -> str:
 
 
 def _latex_implicit(expr: sp.Expr) -> str:
-    return sp.latex(expr) + " = 0"
+    rendered = sp.latex(expr.subs(DY, sp.Symbol("y'")))
+    return rendered.replace("y'^{", r"\left(y'\right)^{") + " = 0"
+
+
+def _latex_differential(m_expr: sp.Expr, n_expr: sp.Expr) -> str:
+    def _factor(term: sp.Expr) -> str:
+        tex = sp.latex(term)
+        return rf"\left({tex}\right)" if isinstance(term, sp.Add) else tex
+
+    if n_expr == 0:
+        return rf"{_factor(m_expr)}\,dx = 0"
+    n_tex = sp.latex(n_expr)
+    if not isinstance(n_expr, sp.Add) and n_tex.startswith("-"):
+        neg_n = sp.simplify(-n_expr)
+        return rf"{_factor(m_expr)}\,dx - {_factor(neg_n)}\,dy = 0"
+    return rf"{_factor(m_expr)}\,dx + {_factor(n_expr)}\,dy = 0"
 
 
 def parse_ode(text: str) -> ParsedODE:
@@ -564,8 +662,8 @@ def parse_ode(text: str) -> ParsedODE:
 
     # Normalización de derivadas antes del control de seguridad: la prima de
     # y' se transforma en el símbolo interno Dy.
-    prepared = _DY_DX.sub("Dy", raw)
-    prepared = _PRIME.sub("Dy", prepared)
+    prepared = _substitute_with_spacing(_DY_DX, "Dy", raw)
+    prepared = _substitute_with_spacing(_PRIME, "Dy", prepared)
 
     # Los diferenciales sueltos sólo se interpretan si no hay Dy explícito.
     has_derivative = "Dy" in prepared
@@ -635,12 +733,7 @@ def parse_ode(text: str) -> ParsedODE:
             F=expression,
             M=m_expr,
             N=n_expr,
-            latex_str=(
-                sp.latex(m_expr)
-                + r"\,dx + "
-                + sp.latex(n_expr)
-                + r"\,dy = 0"
-            ),
+            latex_str=_latex_differential(m_expr, n_expr),
             standard_form=standard,
             dominio=dominio,
         )

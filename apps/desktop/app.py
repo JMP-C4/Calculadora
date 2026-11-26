@@ -12,6 +12,7 @@ explicación paso a paso, y una barra de estado siempre visible.
 from __future__ import annotations
 
 import io
+import math
 import queue
 import threading
 import time
@@ -21,12 +22,19 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any
 
+import sympy as sp
+from sympy.parsing.sympy_parser import parse_expr
+
 from odecalc.api import solve
+from odecalc.parsing import parse_ode
+from odecalc.symbols import C, X, Y
 from odecalc.timeout import TimeoutError
 
 from core.notacion import (
     NATURAL,
     NOTACIONES,
+    adaptar_latex_mathtext,
+    codigo_a_latex,
     formatear,
     formatear_texto,
     fragmentos,
@@ -36,6 +44,33 @@ from core.notacion import (
     leer_preferencia,
     normalizar,
 )
+
+_METHOD_LABELS: dict[str, str] = {
+    "linear": "Lineal de primer orden",
+    "separable": "Variables separables",
+    "exact": "Ecuación exacta",
+    "bernoulli": "Ecuación de Bernoulli",
+    "homogeneous": "Homogénea de grado cero",
+    "reducible_homogeneous": "Reducible a homogénea",
+    "substitution_linear_combo": r"Sustitución lineal $u = a x + b y$",
+    "riccati": "Ecuación de Riccati",
+    "clairaut": "Ecuación de Clairaut",
+    "lagrange": "Ecuación de Lagrange",
+    "integrating_factor_x": "Factor integrante μ(x)",
+    "integrating_factor_y": "Factor integrante μ(y)",
+    "integrating_factor_xy": "Factor integrante μ(xy)",
+    "integrating_factor_x_plus_y": "Factor integrante μ(x + y)",
+    "integrating_factor_x2_plus_y2": "Factor integrante μ(x² + y²)",
+    "dsolve": "Respaldo simbólico (dsolve)",
+    "numeric": "Respaldo numérico (SciPy)",
+}
+
+
+def _etiqueta_metodo(method: str | None) -> str:
+    if not method:
+        return "—"
+    human = _METHOD_LABELS.get(method)
+    return f"{human} ({method})" if human else method
 
 try:
     from matplotlib.figure import Figure
@@ -163,6 +198,8 @@ class ODEApp(tk.Tk):
 
         self._queue: queue.Queue[object] = queue.Queue()
         self._poll_id: str | None = None
+        self._preview_after_id: str | None = None
+        self._busy = False
         self._plot_bounds: tuple[float, float] = (-5.0, 5.0)
         self._started_at: float | None = None
         self._ultima_solicitud: tuple[str, dict[str, Any]] | None = None
@@ -170,15 +207,17 @@ class ODEApp(tk.Tk):
         self._compacto: bool | None = None
         self._ejemplos_visibles = False
         self._wraplengths: dict[str, int] = {}
-        self._notacion_salida = tk.StringVar(value=leer_preferencia())
+        self._notacion_salida = tk.StringVar(value=leer_preferencia(default="Algebraica"))
         self._vista = tk.StringVar(value="Lienzo")
         self._ultimo_resultado: Any = None
+        self._input_preview: Any = None
         self._math_preview: Any = None
         self._math_images: list[tk.PhotoImage] = []
 
         self._configure_styles()
         self._build_layout()
         self._bind_shortcuts()
+        self._actualizar_preview_entrada()
         self._poll_id = self.after(100, self._poll)
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self.after(120, self.equation_entry.focus_set)
@@ -377,7 +416,24 @@ class ODEApp(tk.Tk):
             text="Acepta y', dy/dx, M dx + N dy = 0, formas implícitas\ny LaTeX: \\frac{dy}{dx} = \\frac{x^2}{y}",
             style="Hint.TLabel",
         )
-        self._equation_hint.pack(anchor="w", pady=(0, 14))
+        self._equation_hint.pack(anchor="w", pady=(0, 8))
+
+        if MathPreview is not None:
+            preview_box = tk.Frame(
+                editor_body,
+                bg=SURFACE_SOFT,
+                highlightbackground=LINE,
+                highlightthickness=1,
+                bd=0,
+            )
+            preview_box.pack(fill="x", pady=(0, 10))
+            self._input_preview = MathPreview(
+                preview_box,
+                figsize=(4.2, 0.72),
+                fontsize=12,
+            )
+            self._input_preview.figure.patch.set_facecolor(SURFACE_SOFT)
+            self._input_preview.pack(fill="x", expand=True, padx=2, pady=2)
 
         conditions = tk.Frame(editor_body, bg=SURFACE)
         conditions.pack(fill="x", pady=(0, 12))
@@ -397,9 +453,9 @@ class ODEApp(tk.Tk):
             ("x mín", self.x_min),
             ("x máx", self.x_max),
         )
-        for index, (label, variable) in enumerate(fields):
-            row, column = divmod(index, 2)
-            ttk.Label(conditions, text=label, style="Hint.TLabel").grid(
+        for _index, (_label, variable) in enumerate(fields):
+            row, column = divmod(_index, 2)
+            ttk.Label(conditions, text=_label, style="Hint.TLabel").grid(
                 row=row + 1,
                 column=column * 2,
                 sticky="e",
@@ -413,6 +469,9 @@ class ODEApp(tk.Tk):
                 style="Card.TEntry",
             ).grid(row=row + 1, column=column * 2 + 1, sticky="w", padx=(0, 12), pady=3)
         conditions.columnconfigure(4, weight=1)
+
+        for var in (self.equation, self.x0, self.y0):
+            var.trace_add("write", self._programar_preview_entrada)
 
         actions = tk.Frame(editor_body, bg=SURFACE)
         actions.pack(fill="x", pady=(0, 10))
@@ -942,15 +1001,17 @@ class ODEApp(tk.Tk):
             wrap="word",
             height=height,
             width=40,
-            font=(FONT_MONO, 9),
+            font=(FONT_SANS, 10),
             undo=False,
             bg=SURFACE_SOFT,
             fg=INK_SOFT,
             insertbackground=INK,
             relief="flat",
             bd=0,
-            padx=8,
-            pady=6,
+            padx=10,
+            pady=8,
+            spacing1=2,
+            spacing3=2,
             selectbackground=ACCENT_SOFT,
             selectforeground=INK,
         )
@@ -1052,9 +1113,52 @@ class ODEApp(tk.Tk):
         self.equation_entry.focus_set()
         current = self.equation.get()
         try:
+            pos = self.equation_entry.index("insert")
             self.equation_entry.insert("insert", token)
+            if token.endswith("()"):
+                self.equation_entry.icursor(pos + len(token) - 1)
         except tk.TclError:  # pragma: no cover - combobox sin cursor
             self.equation.set(current + token)
+
+    def _programar_preview_entrada(self, *_args: object) -> None:
+        if self._input_preview is None:
+            return
+        if self._preview_after_id is not None:
+            try:
+                self.after_cancel(self._preview_after_id)
+            except tk.TclError:
+                pass
+        self._preview_after_id = self.after(120, self._actualizar_preview_entrada)
+
+    def _actualizar_preview_entrada(self) -> None:
+        self._preview_after_id = None
+        preview = self._input_preview
+        if preview is None:
+            return
+        texto = self.equation.get().strip()
+        if not texto:
+            preview.show_placeholder()
+            return
+        cond = None
+        x0_txt = self.x0.get().strip()
+        y0_txt = self.y0.get().strip()
+        if x0_txt and y0_txt:
+            try:
+                x0_val = float(x0_txt)
+                y0_val = float(y0_txt)
+                if math.isfinite(x0_val) and math.isfinite(y0_val):
+                    cond = type("_PVI", (), {"x0": x0_val, "y0": y0_val})()
+            except ValueError:
+                cond = None
+        parsed = parse_ode(texto)
+        if parsed.error is None and parsed.latex_str:
+            latex_expr = parsed.latex_str
+        else:
+            latex_expr = adaptar_latex_mathtext(codigo_a_latex(texto))
+        if not latex_expr:
+            preview.show_placeholder()
+            return
+        preview.render(latex_expr, cond)
 
     def _load_example(self, equation: str, *, solve_now: bool = False) -> None:
         self.equation.set(equation)
@@ -1094,10 +1198,11 @@ class ODEApp(tk.Tk):
             fg=MUTED,
             font=(FONT_SANS, 8),
         ).pack(side="left", padx=(0, 6))
+        etiquetas = {"Algebraica": "Estándar"}
         for notacion in NOTACIONES:
             ttk.Radiobutton(
                 contenedor,
-                text=notacion,
+                text=etiquetas.get(notacion, notacion),
                 value=notacion,
                 variable=self._notacion_salida,
                 command=self._on_notacion_cambiada,
@@ -1123,7 +1228,7 @@ class ODEApp(tk.Tk):
             return f"${texto}$"
         return texto
 
-    def _set_preview(self, latex: str, visible: bool) -> None:
+    def _set_preview(self, latex: str, visible: bool, conditions: Any = None) -> None:
         preview = self._math_preview
         if preview is None:
             return
@@ -1132,33 +1237,12 @@ class ODEApp(tk.Tk):
             return
         if not preview.winfo_ismapped():
             preview.pack(fill="x", before=self.summary.master, pady=(6, 0))
-        preview.render(latex)
+        preview.render(adaptar_latex_mathtext(latex), conditions)
 
     def _imagen_latex(self, latex: str) -> tk.PhotoImage:
-        """Renderiza una fórmula corta como imagen para insertarla en el texto."""
+        """Renderiza una fórmula corta como imagen PNG para insertarla en el texto."""
 
-        if Figure is None:
-            raise RuntimeError("Matplotlib no está disponible")
-        figura = Figure(figsize=(0.02, 0.02), dpi=110)
-        figura.patch.set_alpha(0)
-        figura.text(
-            0,
-            0,
-            f"${latex}$",
-            fontsize=10,
-            color=INK_SOFT,
-            va="bottom",
-        )
-        buffer = io.BytesIO()
-        figura.savefig(
-            buffer,
-            format="png",
-            transparent=True,
-            bbox_inches="tight",
-            pad_inches=0.02,
-        )
-        buffer.seek(0)
-        return tk.PhotoImage(data=buffer.getvalue())
+        return tk.PhotoImage(data=_renderizar_png_latex(latex))
 
     def _insertar_formula(
         self, widget: tk.Text, latex: str, notacion: str = NATURAL
@@ -1187,10 +1271,14 @@ class ODEApp(tk.Tk):
     ) -> None:
         """Escribe prosa y fórmulas mixtas con la notación elegida."""
 
-        widget.configure(state="normal")
+        modo = normalizar(notacion)
+        widget.configure(
+            state="normal",
+            font=(FONT_MONO, 9) if modo == "Infija" else (FONT_SANS, 10),
+        )
         widget.delete("1.0", "end")
         try:
-            if normalizar(notacion) == "Infija":
+            if modo == "Infija":
                 widget.insert("end", formatear_texto(contenido, notacion))
             else:
                 for texto, es_latex in fragmentos(contenido, notacion):
@@ -1204,6 +1292,49 @@ class ODEApp(tk.Tk):
             widget.configure(state="disabled")
             widget.yview_moveto(0.0)
 
+    def _residuo_en_notacion(self, residual: object, notacion: str) -> str:
+        texto = str(residual or "").strip()
+        if not texto:
+            return ""
+        if normalizar(notacion) == "Infija":
+            return texto
+        allowed = {
+            "x": X,
+            "y": Y,
+            "C": C,
+            "Piecewise": sp.Piecewise,
+            "Eq": sp.Eq,
+            "Abs": sp.Abs,
+            "sign": sp.sign,
+            "nan": sp.nan,
+            "oo": sp.oo,
+            "True": sp.true,
+            "False": sp.false,
+            "EulerGamma": sp.EulerGamma,
+            "sin": sp.sin,
+            "cos": sp.cos,
+            "tan": sp.tan,
+            "exp": sp.exp,
+            "log": sp.log,
+            "sqrt": sp.sqrt,
+            "Ci": sp.Ci,
+            "Si": sp.Si,
+            "Ei": sp.Ei,
+            "erf": sp.erf,
+            "erfi": sp.erfi,
+        }
+        try:
+            expr = parse_expr(
+                texto,
+                local_dict=allowed,
+                global_dict={"__builtins__": {}},
+                evaluate=False,
+            )
+            latex_res = sp.latex(expr)
+        except Exception:
+            latex_res = codigo_a_latex(texto)
+        return self._formula_en_linea(latex_res, None, notacion)
+
     def _render_salida(self, result: Any) -> None:
         """Actualiza la tarjeta «Resultado» con la notación elegida."""
 
@@ -1214,50 +1345,110 @@ class ODEApp(tk.Tk):
         solucion = result.particular or result.general
         solucion_latex = getattr(solucion, "latex", "") or ""
         texto_preview, _es_latex = formatear(solucion_latex, solucion, notacion)
+        if not texto_preview and getattr(result, "input_latex", ""):
+            texto_preview = self._expr(result.input_latex, None, notacion)
         self._set_preview(texto_preview, usar_preview)
 
         lines: list[str] = []
         if result.error:
             lines.append(f"Error: {result.error}")
+        input_latex = getattr(result, "input_latex", "") or ""
+        if input_latex:
+            ecuacion_fmt = self._formula_en_linea(input_latex, None, notacion)
+            lines.append(f"Ecuación: {ecuacion_fmt}")
         if result.standard_form:
-            lines.append(f"Forma estándar: {result.standard_form}")
-        lines.append(f"Método elegido: {result.chosen_method or '—'}")
+            if normalizar(notacion) == "Infija":
+                lines.append(f"Forma estándar: {result.standard_form}")
+            else:
+                std_latex = codigo_a_latex(result.standard_form)
+                if not input_latex or std_latex.replace(" ", "") != input_latex.replace(" ", ""):
+                    lines.append(
+                        f"Forma estándar: {self._formula_en_linea(std_latex, None, notacion)}"
+                    )
+        solicitud = getattr(self, "_ultima_solicitud", None)
+        if solicitud is not None:
+            x0 = solicitud[1].get("x0")
+            y0 = solicitud[1].get("y0")
+            if x0 is not None and y0 is not None:
+                pvi_latex = rf"y({x0:g}) = {y0:g}"
+                lines.append(
+                    f"Condición inicial: {self._formula_en_linea(pvi_latex, None, notacion)}"
+                )
+        lines.append(f"Método elegido: {_etiqueta_metodo(result.chosen_method)}")
         if result.general:
             kind = "explícita" if result.general.is_explicit else "implícita"
             cuerpo = self._formula_en_linea(result.general.latex, result.general, notacion)
             lines.append(f"\nSolución general ({kind}):\n{cuerpo}")
+            branch_note = getattr(result.general, "branch_note", None)
+            if branch_note:
+                lines.append(f"Nota de rama: {branch_note}")
         if result.particular:
             kind = "explícita" if result.particular.is_explicit else "implícita"
             cuerpo = self._formula_en_linea(result.particular.latex, result.particular, notacion)
             lines.append(f"\nSolución particular ({kind}):\n{cuerpo}")
+            branch_note = getattr(result.particular, "branch_note", None)
+            if branch_note:
+                lines.append(f"Nota de rama: {branch_note}")
         if result.verification:
             lines.append(
                 f"\nVerificación: {result.verification.status}\n"
                 f"{result.verification.message}"
             )
+            residuo = getattr(result.verification, "simplified_residual", None)
+            if residuo is not None and str(residuo).strip():
+                lines.append(
+                    f"Residuo simbólico: {self._residuo_en_notacion(residuo, notacion)}"
+                )
         if result.particular_verification:
             lines.append(
                 f"\nVerificación del PVI: {result.particular_verification.status}\n"
                 f"{result.particular_verification.message}"
             )
+            residuo_pvi = getattr(result.particular_verification, "simplified_residual", None)
+            if residuo_pvi is not None and str(residuo_pvi).strip():
+                lines.append(
+                    f"Residuo del PVI: {self._residuo_en_notacion(residuo_pvi, notacion)}"
+                )
         if result.validity.domain:
             lines.append(f"\nDominio: {result.validity.domain}")
         if result.validity.interval:
-            lines.append(f"Intervalo: {result.validity.interval}")
+            intervalo = (
+                result.validity.interval
+                if normalizar(notacion) == "Infija"
+                else formatear_texto(result.validity.interval, notacion)
+            )
+            lines.append(f"Intervalo: {intervalo}")
+        singular_points = getattr(result.validity, "singular_points", None) or ()
+        if singular_points:
+            pts = ", ".join(
+                str(pt) if normalizar(notacion) == "Infija" else f"${codigo_a_latex(str(pt))}$"
+                for pt in singular_points
+            )
+            lines.append(f"Puntos singulares: {pts}")
+        validity_notes = getattr(result.validity, "notes", None) or ()
+        for note in validity_notes:
+            lines.append(f"• {note}")
         if result.numeric is not None:
             lines.append(f"\nRespaldo numérico: {result.numeric.message}")
+            interval_num = getattr(result.numeric, "interval", None)
+            if getattr(result.numeric, "success", False) and interval_num is not None:
+                a_val, b_val = interval_num
+                rango_latex = rf"x \in [{a_val:.6g}, {b_val:.6g}]"
+                lines.append(
+                    f"Intervalo numérico: {self._formula_en_linea(rango_latex, None, notacion)}"
+                )
         if result.singular_solutions:
             lines.append("\nSoluciones singulares:")
-            lines.extend(
-                f"  • {self._formula_en_linea(item.latex, item, notacion)}"
-                for item in result.singular_solutions
-            )
+            for item in result.singular_solutions:
+                cuerpo_s = self._formula_en_linea(item.latex, item, notacion)
+                nota_s = getattr(item, "branch_note", None)
+                lines.append(f"  • {cuerpo_s}" + (f" ({nota_s})" if nota_s else ""))
         self._set_text_formateado(self.summary, "\n".join(lines), notacion)
 
     def _render_metodos(self, result: Any, notacion: str) -> None:
         lineas = [
             f"[{match.priority:3}] {match.name} ({match.method})\n"
-            f"    {formatear_texto(match.evidence, notacion)}"
+            f"    {match.evidence}"
             for match in result.classifications
         ]
         self._set_text_formateado(
@@ -1273,7 +1464,7 @@ class ODEApp(tk.Tk):
             if paso.latex:
                 lineas.append(self._formula_en_linea(paso.latex, None, notacion))
             if paso.explanation:
-                lineas.append(formatear_texto(paso.explanation, notacion))
+                lineas.append(str(paso.explanation))
             lineas.append("")
         self._set_text_formateado(
             self.steps, "\n".join(lineas).strip() or "No hay pasos disponibles.", notacion
@@ -1301,7 +1492,7 @@ class ODEApp(tk.Tk):
         elif result.error:
             partes.append(f"El motor no pudo resolver la ecuación: {result.error}")
         if result.chosen_method:
-            partes.append(f"Método elegido: {result.chosen_method}.")
+            partes.append(f"Método elegido: {_etiqueta_metodo(result.chosen_method)}.")
         if result.general:
             cuerpo = self._formula_en_linea(result.general.latex, result.general, notacion)
             partes.append(f"Solución general:\n{cuerpo}")
@@ -1310,6 +1501,8 @@ class ODEApp(tk.Tk):
             partes.append(f"Solución particular:\n{cuerpo}")
         if result.validity.domain:
             partes.append(f"Dominio de validez: {result.validity.domain}.")
+        if result.validity.interval:
+            partes.append(f"Intervalo de validez: {result.validity.interval}.")
         if result.numeric is not None and result.numeric.message:
             partes.append(f"Respaldo numérico: {result.numeric.message}")
         if result.warnings:
@@ -1686,6 +1879,13 @@ class ODEApp(tk.Tk):
 
     def _open_readme(self) -> None:
         readme = Path(__file__).resolve().parents[2] / "README.md"
+        if not readme.exists():
+            messagebox.showinfo(
+                "README",
+                "Consulta el manual en Ayuda → Manual de instrucciones.",
+                parent=self,
+            )
+            return
         try:
             webbrowser.open(readme.as_uri())
         except Exception:
@@ -1704,6 +1904,9 @@ class ODEApp(tk.Tk):
 
     # -------------------------------------------------------------- solve
     def _start(self) -> None:
+        if self._busy:
+            self._set_status("Ya hay un cálculo en curso…", "warning")
+            return
         equation = self.equation.get().strip()
         if not equation:
             messagebox.showerror("Entrada vacía", "Escribe una EDO de primer orden.", parent=self)
@@ -1719,6 +1922,22 @@ class ODEApp(tk.Tk):
             messagebox.showerror(
                 "Datos inválidos",
                 "Las condiciones e intervalos deben ser numéricos.",
+                parent=self,
+            )
+            return
+        if not all(
+            math.isfinite(val) for val in values.values() if val is not None
+        ):
+            messagebox.showerror(
+                "Datos inválidos",
+                "Los valores numéricos no pueden ser NaN ni infinito.",
+                parent=self,
+            )
+            return
+        if values["x_min"] >= values["x_max"]:
+            messagebox.showerror(
+                "Intervalo inválido",
+                "Se requiere x mín < x máx para graficar.",
                 parent=self,
             )
             return
@@ -1744,6 +1963,7 @@ class ODEApp(tk.Tk):
             return
         equation, values = solicitud
 
+        self._busy = True
         self.solve_button.configure(state="disabled")
         self.progress.start(12)
         self._set_status("Calculando…")
@@ -1855,6 +2075,7 @@ class ODEApp(tk.Tk):
             self._schedule_poll()
             return
 
+        self._busy = False
         self.progress.stop()
         self.solve_button.configure(state="normal")
 
@@ -1919,7 +2140,48 @@ class ODEApp(tk.Tk):
             except tk.TclError:  # pragma: no cover - ventana ya destruida
                 pass
             self._poll_id = None
+        if self._preview_after_id is not None:
+            try:
+                self.after_cancel(self._preview_after_id)
+            except tk.TclError:  # pragma: no cover - ventana ya destruida
+                pass
+            self._preview_after_id = None
         super().destroy()
+
+
+def _renderizar_png_latex(
+    latex: str,
+    *,
+    color: str = INK_SOFT,
+    fontsize: int = 11,
+    dpi: int = 115,
+) -> bytes:
+    """Genera los bytes PNG de una fórmula LaTeX adaptada a ``mathtext``."""
+
+    if Figure is None:
+        raise RuntimeError("Matplotlib no está disponible")
+    adaptado = adaptar_latex_mathtext(latex)
+    if not adaptado:
+        raise ValueError("Fórmula LaTeX vacía")
+    figura = Figure(figsize=(0.02, 0.02), dpi=dpi)
+    figura.patch.set_alpha(0)
+    figura.text(
+        0,
+        0,
+        f"${adaptado}$",
+        fontsize=fontsize,
+        color=color,
+        va="bottom",
+    )
+    buffer = io.BytesIO()
+    figura.savefig(
+        buffer,
+        format="png",
+        transparent=True,
+        bbox_inches="tight",
+        pad_inches=0.03,
+    )
+    return buffer.getvalue()
 
 
 def main() -> None:
@@ -1931,4 +2193,4 @@ if __name__ == "__main__":  # pragma: no cover
     main()
 
 
-__all__ = ["ODEApp", "main"]
+__all__ = ["ODEApp", "_etiqueta_metodo", "_renderizar_png_latex", "main"]

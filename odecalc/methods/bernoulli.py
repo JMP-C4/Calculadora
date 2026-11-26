@@ -6,7 +6,9 @@ import sympy as sp
 
 from odecalc.classify.classifier import bernoulli_coeffs
 from odecalc.methods.common import (
+    _signed_term_latex,
     explicit_solution,
+    format_linear_equation,
     make_step,
     safe_integrate,
     safe_simplify,
@@ -30,18 +32,20 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
     if alpha == 0:
         raise ValueError("n = 1 no es una EDO de Bernoulli.")
 
+    lhs_bernoulli = format_linear_equation("y'", p_expr, "y", sp.Integer(0)).rsplit(" =", 1)[0]
+    rhs_bernoulli = _signed_term_latex(q_expr, rf"y^{{{sp.latex(n)}}}", include_plus=False).lstrip()
     steps: list[Step] = [
         make_step(
             1,
             "Identificar la EDO de Bernoulli",
-            f"y' + {sp.latex(p_expr)}\\,y = {sp.latex(q_expr)}\\,y^{{{sp.latex(n)}}}",
-            f"La ecuación tiene la forma de Bernoulli con n = {sp.sstr(n)}.",
+            f"{lhs_bernoulli} = {rhs_bernoulli}",
+            rf"La ecuación tiene la forma de Bernoulli con $n = {sp.latex(n)}$.",
         ),
         make_step(
             2,
             "Aplicar la sustitución v = y^(1−n)",
             f"v = y^{{{sp.latex(alpha)}}}",
-            f"Con n = {sp.sstr(n)}, el exponente es 1 − n = {sp.sstr(alpha)}. "
+            rf"Con $n = {sp.latex(n)}$, el exponente es $1 - n = {sp.latex(alpha)}$. "
             "Esta sustitución elimina la potencia no lineal.",
         ),
     ]
@@ -52,8 +56,8 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
         make_step(
             3,
             "Obtener la EDO lineal en v",
-            f"v' + {sp.latex(p_transformed)}\\,v = {sp.latex(q_transformed)}",
-            "Al derivar v = y^(1−n) y sustituir se obtiene una EDO lineal.",
+            format_linear_equation("v'", p_transformed, "v", q_transformed),
+            r"Al derivar $v = y^{1-n}$ y sustituir se obtiene una EDO lineal.",
         )
     )
 
@@ -66,7 +70,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             4,
             "Resolver la EDO lineal",
             rf"v = {sp.latex(v_solution)}",
-            "Se aplica el factor integrante μ(x) = e^(∫(1−n)P dx) a la EDO lineal.",
+            r"Se aplica el factor integrante $\mu(x) = e^{\int (1-n)P(x)\,dx}$ a la EDO lineal.",
         )
     )
 
@@ -77,7 +81,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             5,
             "Volver a y",
             sp.latex(sp.Eq(Y, y_solution)),
-            f"Se despeja y = v^{{{sp.latex(exponent)}}}. Deben respetarse las "
+            rf"Se despeja $y = v^{{{sp.latex(exponent)}}}$. Deben respetarse las "
             "ramas reales de la potencia.",
         )
     )

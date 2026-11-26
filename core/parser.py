@@ -242,11 +242,23 @@ def _latex_derivada(rhs: sp.Expr) -> str:
     return rf"\frac{{dy}}{{dx}} = {sp.latex(rhs)}"
 
 
+def _sustituir_derivada(patron: re.Pattern[str], texto: str) -> str:
+    def _reemplazo(encontrado: re.Match[str]) -> str:
+        inicio, fin = encontrado.span()
+        izq = " " if inicio > 0 and (texto[inicio - 1].isalnum() or texto[inicio - 1] in "_)") else ""
+        der = " " if fin < len(texto) and (texto[fin].isalnum() or texto[fin] in "_(") else ""
+        return f"{izq}Dy{der}"
+
+    return patron.sub(_reemplazo, texto)
+
+
 def _normalizar_derivadas(texto: str) -> str:
     """Convierte ``y'`` y ``dy/dx`` en el símbolo seguro ``Dy``."""
 
-    normalizado = re.sub(r"d\s*y\s*/\s*d\s*x", "Dy", texto, flags=re.IGNORECASE)
-    normalizado = normalizado.replace("y′", "Dy").replace("y'", "Dy")
+    normalizado = _sustituir_derivada(
+        re.compile(r"d\s*y\s*/\s*d\s*x", flags=re.IGNORECASE), texto
+    )
+    normalizado = _sustituir_derivada(re.compile(r"y\s*[′']\s*(?:\(\s*x\s*\))?"), normalizado)
     return normalizado
 
 

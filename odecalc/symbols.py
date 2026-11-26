@@ -23,4 +23,36 @@ U = sp.Symbol("u", real=True)
 V = sp.Symbol("v", real=True)
 P = sp.Symbol("p", real=True)
 
-__all__ = ["X", "Y", "DY", "DX", "DY_DIFF", "C", "C1", "U", "V", "P"]
+
+def lambdify_modules() -> list[object]:
+    """Devuelve módulos compartidos (SciPy special + NumPy) para ``sp.lambdify``."""
+
+    import numpy as np
+    import scipy.special as scipy_special
+
+    def _si(value):
+        return scipy_special.sici(value)[0]
+
+    def _ci(value):
+        return scipy_special.sici(value)[1]
+
+    def _acot(value):
+        arr = np.asarray(value)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out = np.where(arr == 0, np.pi / 2, np.arctan(1.0 / arr))
+        return out.item() if np.ndim(value) == 0 else out
+
+    return [
+        {
+            "erf": scipy_special.erf,
+            "erfi": scipy_special.erfi,
+            "Ei": scipy_special.expi,
+            "Si": _si,
+            "Ci": _ci,
+            "acot": _acot,
+        },
+        "numpy",
+    ]
+
+
+__all__ = ["X", "Y", "DY", "DX", "DY_DIFF", "C", "C1", "U", "V", "P", "lambdify_modules"]

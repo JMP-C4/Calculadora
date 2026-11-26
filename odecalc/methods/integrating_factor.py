@@ -5,6 +5,7 @@ from __future__ import annotations
 import sympy as sp
 
 from odecalc.methods.common import (
+    format_differential_latex,
     implicit_solution,
     make_step,
     safe_simplify,
@@ -19,6 +20,13 @@ _LABELS = {
     "integrating_factor_x_plus_y": "μ(x+y)",
     "integrating_factor_x2_plus_y2": "μ(x²+y²)",
 }
+_LATEX_LABELS = {
+    "integrating_factor_x": r"\mu(x)",
+    "integrating_factor_y": r"\mu(y)",
+    "integrating_factor_xy": r"\mu(xy)",
+    "integrating_factor_x_plus_y": r"\mu(x+y)",
+    "integrating_factor_x2_plus_y2": r"\mu(x^{2}+y^{2})",
+}
 
 
 def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
@@ -27,6 +35,7 @@ def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
     mu = safe_simplify(match.data["mu"])
     u_expr = match.data.get("u", X)
     label = _LABELS.get(match.method, match.method)
+    latex_label = _LATEX_LABELS.get(match.method, sp.latex(sp.Symbol("mu")))
 
     m_mult = safe_simplify(mu * m_expr)
     n_mult = safe_simplify(mu * n_expr)
@@ -37,8 +46,8 @@ def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
         make_step(
             1,
             "Escribir la forma diferencial",
-            sp.latex(m_expr) + r"\,dx + " + sp.latex(n_expr) + r"\,dy = 0",
-            "Se identifican M y N para comprobar la exactitud.",
+            format_differential_latex(m_expr, n_expr),
+            r"Se identifican $M$ y $N$ para comprobar la exactitud.",
         ),
         make_step(
             2,
@@ -50,16 +59,16 @@ def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
         make_step(
             3,
             f"Construir el factor {label}",
-            f"{label} = {sp.latex(mu)}",
-            f"La razón que define el factor depende sólo de u = {sp.latex(u_expr)}; "
+            f"{latex_label} = {sp.latex(mu)}",
+            rf"La razón que define el factor depende sólo de $u = {sp.latex(u_expr)}$; "
             "al multiplicar, la ecuación resultante es exacta.",
             ascii_expr=f"{label} = {sp.sstr(mu)}",
         ),
         make_step(
             4,
             "Multiplicar la ecuación",
-            sp.latex(m_mult) + r"\,dx + " + sp.latex(n_mult) + r"\,dy = 0",
-            "Se multiplican M y N por el factor integrante.",
+            format_differential_latex(m_mult, n_mult),
+            r"Se multiplican $M$ y $N$ por el factor integrante.",
         ),
     ]
 
@@ -72,7 +81,7 @@ def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
                 5,
                 "Integrar la ecuación exacta",
                 rf"F(x,y) = {sp.latex(full_potential)} = C",
-                "La nueva ecuación es exacta; su potencial F proporciona la "
+                r"La nueva ecuación es exacta; su potencial $F$ proporciona la "
                 "solución general implícita.",
             )
         ]

@@ -9,12 +9,18 @@ from odecalc.models import SolveResult
 from odecalc.symbols import X, Y
 from odecalc.timeout import run_with_timeout
 
-from core.clasificador import clasificar, etiqueta_metodo, tipo_principal
+from core.clasificador import (
+    clasificar,
+    detectados_desde_matches,
+    etiqueta_metodo,
+    tipo_principal,
+)
 from core.existencia import analizar_existencia
 from core.parser import parsear
 from core.pasos import pasos_desde_motor, pasos_numericos, pasos_para_tipo
 from core.tipos import (
     Certificado,
+    Ecuacion,
     ResultadoNumerico,
     ResultadoSolucion,
     SolucionNoDisponible,
@@ -82,6 +88,7 @@ def convertir_motor(
     x0: float | None = None,
     y0: float | None = None,
     intervalo: tuple[float, float] | None = None,
+    ecuacion: Ecuacion | None = None,
 ) -> ResultadoSolucion:
     """Construye el :class:`ResultadoSolucion` que consume la interfaz."""
 
@@ -90,8 +97,13 @@ def convertir_motor(
     ):
         raise SolucionNoDisponible(motor.error)
 
-    ecuacion = parsear(texto)
-    tipos = clasificar(ecuacion)
+    if ecuacion is None:
+        ecuacion = parsear(texto)
+    tipos = (
+        detectados_desde_matches(motor.classifications, ecuacion)
+        if motor.classifications
+        else clasificar(ecuacion)
+    )
     numerico = _numerico_desde_motor(motor)
     particular = motor.particular
     general = motor.general

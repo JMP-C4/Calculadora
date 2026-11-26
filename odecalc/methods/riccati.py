@@ -7,6 +7,8 @@ import sympy as sp
 from odecalc.classify.classifier import riccati_coeffs
 from odecalc.methods.common import (
     explicit_solution,
+    format_linear_equation,
+    format_riccati_rhs,
     make_step,
     safe_integrate,
     safe_simplify,
@@ -82,8 +84,8 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
         make_step(
             1,
             "Identificar la EDO de Riccati",
-            f"y' = {sp.latex(q0)} + {sp.latex(q1)}\\,y + {sp.latex(q2)}\\,y^2",
-            "Es una EDO de Riccati con coeficientes q₀, q₁ y q₂.",
+            f"y' = {format_riccati_rhs(q0, q1, q2)}",
+            r"Es una EDO de Riccati con coeficientes $q_0$, $q_1$ y $q_2$.",
         ),
         make_step(
             2,
@@ -101,9 +103,9 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
         make_step(
             3,
             "Sustituir y = yₚ + 1/v",
-            f"v' + {sp.latex(p_expr)}\\,v = {sp.latex(q_linear)}",
-            "La sustitución y = yₚ + 1/v transforma la Riccati en una EDO "
-            "lineal para v.",
+            format_linear_equation("v'", p_expr, "v", q_linear),
+            r"La sustitución $y = y_p + \frac{1}{v}$ transforma la Riccati en una EDO "
+            r"lineal para $v$.",
         )
     )
 
@@ -126,7 +128,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             5,
             "Volver a y",
             sp.latex(sp.Eq(Y, general)),
-            "Se despeja y = yₚ + 1/v.",
+            r"Se despeja $y = y_p + \frac{1}{v}$.",
         )
     )
     return explicit_solution(general), steps, []

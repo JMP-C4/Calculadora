@@ -6,6 +6,7 @@ import sympy as sp
 
 from odecalc.classify.classifier import exact_parts, is_exact
 from odecalc.methods.common import (
+    format_differential_latex,
     implicit_solution,
     make_step,
     safe_integrate,
@@ -42,9 +43,9 @@ def solve(parsed: ParsedODE, match: Match | None = None) -> tuple[Solution, list
         make_step(
             1,
             "Escribir en forma diferencial",
-            sp.latex(m_expr) + r"\,dx + " + sp.latex(n_expr) + r"\,dy = 0",
-            "Se identifica M(x,y) como el coeficiente de dx y N(x,y) como el "
-            "coeficiente de dy.",
+            format_differential_latex(m_expr, n_expr),
+            r"Se identifica $M(x,y)$ como el coeficiente de $dx$ y $N(x,y)$ como el "
+            r"coeficiente de $dy$.",
             ascii_expr=f"({sp.sstr(m_expr)}) dx + ({sp.sstr(n_expr)}) dy = 0",
         )
     ]
@@ -67,7 +68,7 @@ def solve(parsed: ParsedODE, match: Match | None = None) -> tuple[Solution, list
             3,
             "Integrar M respecto a x",
             rf"F(x,y) = {sp.latex(potential)} + g(y)",
-            "La constante de integración puede depender de y.",
+            r"La constante de integración puede depender de $y$.",
         )
     )
 
@@ -78,7 +79,7 @@ def solve(parsed: ParsedODE, match: Match | None = None) -> tuple[Solution, list
             "Determinar g(y)",
             rf"g'(y) = {sp.latex(g_prime)} \quad\Longrightarrow\quad "
             rf"g(y) = {sp.latex(g_y)}",
-            "Se deriva F respecto a y, se iguala con N y se integra.",
+            r"Se deriva $F$ respecto a $y$, se iguala con $N$ y se integra.",
         )
     )
 
@@ -88,7 +89,7 @@ def solve(parsed: ParsedODE, match: Match | None = None) -> tuple[Solution, list
             "Escribir la solución general",
             sp.latex(full_potential) + " = C",
             "La solución de una EDO exacta es la familia de curvas de nivel "
-            "F(x,y) = C.",
+            r"$F(x,y) = C$.",
         )
     )
     return implicit_solution(full_potential), steps, []

@@ -8,11 +8,11 @@ import numpy as np
 import sympy as sp
 
 from odecalc.models import SolveResult
-from odecalc.symbols import X, Y
+from odecalc.symbols import X, Y, lambdify_modules
 
 
 def _lambdify(rhs: sp.Expr):
-    function = sp.lambdify((X, Y), rhs, modules=["numpy"])
+    function = sp.lambdify((X, Y), rhs, modules=lambdify_modules())
 
     def evaluate(x_values, y_values):
         with np.errstate(all="ignore"):
@@ -76,7 +76,7 @@ def solution_curve(
     ]
     if constants:
         return None
-    function = sp.lambdify(X, solution.expr, modules=["numpy"])
+    function = sp.lambdify(X, solution.expr, modules=lambdify_modules())
     x_values = np.linspace(float(x_min), float(x_max), max(int(n_points), 2))
     with np.errstate(all="ignore"):
         y_values = np.asarray(function(x_values), dtype=float)
@@ -109,7 +109,7 @@ def family_curves(
             {constants_in_expr[0]: value} if constants_in_expr else {}
         )
         try:
-            function = sp.lambdify(X, expr.subs(substitution), modules=["numpy"])
+            function = sp.lambdify(X, expr.subs(substitution), modules=lambdify_modules())
             with np.errstate(all="ignore"):
                 y_values = np.asarray(function(x_values), dtype=float)
             if y_values.shape != x_values.shape:
@@ -142,7 +142,7 @@ def isoclines(
             solved = []
         for branch in solved:
             try:
-                function = sp.lambdify(X, branch, modules=["numpy"])
+                function = sp.lambdify(X, branch, modules=lambdify_modules())
                 with np.errstate(all="ignore"):
                     y_values = np.asarray(function(x_values), dtype=float)
                 if y_values.shape != x_values.shape:
@@ -159,6 +159,121 @@ def isoclines(
                     }
                 )
     return results
+
+
+def singular_curves(
+    result: SolveResult,
+    *,
+    x_min: float = -5.0,
+    x_max: float = 5.0,
+    n_points: int = 500,
+) -> list[dict[str, np.ndarray]]:
+    """Puntos de las soluciones singulares (envolventes) del resultado.
+
+    Las soluciones singulares de una EDO de Clairaut son la envolvente de la
+    familia de rectas.  Se devuelven con la misma forma que :func:`family_curves`
+    para que cualquier interfaz pueda dibujarlas con su estilo propio.
+    """
+
+    xs = np.linspace(float(x_min), float(x_max), max(int(n_points), 2))
+    curvas: list[dict[str, np.ndarray]] = []
+    for solucion in getattr(result, "singular_solutions", None) or []:
+        expresion = getattr(solucion, "expr", None)
+        if expresion is None:
+            continue
+        ramas = [expresion]
+        if not getattr(solucion, "is_explicit", False):
+            objetivo = getattr(solucion, "value", None) or sp.Integer(0)
+            try:
+                ramas = sp.solve(sp.Eq(expresion, objetivo), Y)
+            except Exception:
+                continue
+        for rama in ramas:
+            if not isinstance(rama, sp.Expr) or rama.free_symbols - {X}:
+                continue
+            try:
+                funcion = sp.lambdify(X, rama, modules=lambdify_modules())
+                with np.errstate(all="ignore"):
+                    ys = np.asarray(funcion(xs), dtype=float)
+                if ys.shape != xs.shape:
+                    ys = np.broadcast_to(ys, xs.shape).astype(float)
+            except Exception:
+                continue
+            mascara = np.isfinite(ys)
+            if np.any(mascara):
+                curvas.append(
+                    {
+                        "x": xs[mascara],
+                        "y": ys[mascara],
+                        "label": "Envolvente singular",
+                    }
+                )
+    return curvas
+
+
+def tangency_points(
+    result: SolveResult,
+    *,
+    x_min: float = -5.0,
+    x_max: float = 5.0,
+) -> list[dict[str, float]]:
+    """Puntos donde la solución particular toca una envolvente singular."""
+
+    particular = getattr(result, "particular", None)
+    expresion = getattr(particular, "expr", None)
+    if expresion is None or not getattr(particular, "is_explicit", False):
+        return []
+    if expresion.free_symbols - {X}:
+        return []
+
+    puntos: list[dict[str, float]] = []
+    vistos: set[tuple[float, float]] = set()
+    for solucion in getattr(result, "singular_solutions", None) or []:
+        envolvente = getattr(solucion, "expr", None)
+        if envolvente is None:
+            continue
+        ramas = [envolvente]
+        if not getattr(solucion, "is_explicit", False):
+            objetivo = getattr(solucion, "value", None) or sp.Integer(0)
+            try:
+                ramas = sp.solve(sp.Eq(envolvente, objetivo), Y)
+            except Exception:
+                continue
+        for rama in ramas:
+            if not isinstance(rama, sp.Expr) or rama.free_symbols - {X}:
+                continue
+            try:
+                raices = sp.solve(sp.Eq(expresion, rama), X)
+            except Exception:
+                continue
+            for raiz in raices:
+                try:
+                    valor = complex(sp.N(raiz))
+                    if abs(valor.imag) > 1e-9:
+                        continue
+                    x_real = float(valor.real)
+                    if not (float(x_min) <= x_real <= float(x_max)):
+                        continue
+                    pendientes = (sp.diff(expresion, X) - sp.diff(rama, X)).subs(X, raiz)
+                    if abs(float(sp.N(pendientes))) > 1e-6:
+                        continue
+                    y_real = float(sp.N(expresion.subs(X, raiz)))
+                except Exception:
+                    continue
+                if not (math.isfinite(x_real) and math.isfinite(y_real)):
+                    continue
+                clave = (round(x_real, 9), round(y_real, 9))
+                if clave in vistos:
+                    continue
+                vistos.add(clave)
+                puntos.append(
+                    {
+                        "x": x_real,
+                        "y": y_real,
+                        "label": f"Tangencia ({x_real:g}, {y_real:g})",
+                    }
+                )
+    return puntos
 
 
 def equilibrium_points(rhs: sp.Expr) -> list[dict[str, object]]:
@@ -223,6 +338,8 @@ __all__ = [
     "direction_field",
     "solution_curve",
     "family_curves",
+    "singular_curves",
+    "tangency_points",
     "isoclines",
     "equilibrium_points",
     "phase_line",

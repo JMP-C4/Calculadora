@@ -22,7 +22,8 @@ from core.tipos import (
     ResultadoNumerico,
     SolucionNoDisponible,
 )
-from odecalc.symbols import X, Y
+from odecalc.numeric.solver import integrate_scipy_segment, scalar_evaluator
+from odecalc.symbols import X, Y, lambdify_modules
 
 METODOS_PROPIOS = ("Euler", "Heun", "RK4")
 METODOS_SCIPY = ("RK45", "DOP853", "BDF", "Radau")
@@ -30,25 +31,13 @@ METODOS = METODOS_PROPIOS + METODOS_SCIPY
 
 
 def _preparar_funcion(rhs: sp.Expr) -> Callable[[float, float], float]:
-    if rhs.free_symbols - {X, Y}:
-        raise SolucionNoDisponible(
-            "La función contiene símbolos adicionales; sustituye los "
-            "parámetros antes de integrar."
-        )
     try:
-        bruta = sp.lambdify((X, Y), rhs, modules=["numpy"])
-    except Exception as exc:
-        raise SolucionNoDisponible(
-            f"No se pudo preparar f(x, y) para el cálculo numérico: {exc}"
-        ) from exc
+        evaluar = scalar_evaluator(rhs)
+    except ValueError as exc:
+        raise SolucionNoDisponible(str(exc)) from exc
 
     def funcion(x: float, y: float) -> float:
-        with np.errstate(all="ignore"):
-            valor = bruta(x, y)
-        arreglo = np.asarray(valor, dtype=float)
-        if arreglo.size != 1:
-            raise ValueError("f(x, y) no devolvió un escalar.")
-        numero = float(arreglo.reshape(-1)[0])
+        numero = evaluar(float(x), float(y))
         if not math.isfinite(numero):
             raise ValueError("f(x, y) no es finita.")
         return numero
@@ -64,16 +53,21 @@ def _evaluar_exacto(exacto: object, x: np.ndarray) -> np.ndarray | None:
             simbolos = exacto.free_symbols
             if simbolos - {X}:
                 return None
-            funcion = sp.lambdify(X, exacto, modules=["numpy"])
-            valores = funcion(x)
+            funcion = sp.lambdify(X, exacto, modules=lambdify_modules())
+            with np.errstate(all="ignore"):
+                valores = funcion(x)
         elif callable(exacto):
             valores = exacto(x)
         else:
             return None
-        arreglo = np.asarray(valores, dtype=float)
-        if arreglo.shape != x.shape:
-            arreglo = np.broadcast_to(arreglo, x.shape).astype(float)
-        return arreglo
+        crudo = np.asarray(valores, dtype=complex)
+        if crudo.shape != x.shape:
+            crudo = np.broadcast_to(crudo, x.shape)
+        return np.where(
+            np.isfinite(crudo.real) & np.isfinite(crudo.imag) & (np.abs(crudo.imag) <= 1e-9),
+            crudo.real,
+            np.nan,
+        ).astype(float)
     except Exception:
         return None
 
@@ -299,6 +293,7 @@ def resolver_scipy(
     atol: float = 1e-10,
     n_points: int = 500,
     exacto: object | None = None,
+    _evaluador: Callable[[float, float], float] | None = None,
 ) -> ResultadoNumerico:
     """Integra con SciPy y cambia a un método implícito si detecta rigidez."""
 
@@ -320,65 +315,55 @@ def resolver_scipy(
             mensaje="El intervalo tiene longitud cero.",
         )
 
-    try:
-        f = _preparar_funcion(rhs)
-    except SolucionNoDisponible as exc:
-        return _resultado_fallido(nombre, str(exc))
-
-    intentos = [nombre]
-    if nombre in {"RK45", "DOP853"}:
-        intentos += ["BDF", "Radau"]
-    mensajes: list[str] = []
-    rigido = False
-    ultimo_nfev = 0
-
-    for indice, candidato in enumerate(intentos):
+    if _evaluador is None:
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                solucion, nfev = _integrar_scipy(
-                    f, x0, y0, x_fin, candidato, rtol, atol, n_points
-                )
-        except Exception as exc:
-            mensajes.append(f"{candidato}: {exc}")
-            continue
-        ultimo_nfev = nfev
-        if not solucion.success or solucion.y.shape[1] == 0:
-            mensajes.append(f"{candidato}: {solucion.message}")
-            if "step size" in str(solucion.message).lower():
-                rigido = True
-            continue
-        if indice > 0:
-            rigido = True
-        x = np.asarray(solucion.t, dtype=float)
-        y = np.asarray(solucion.y[0], dtype=float)
-        error = _error_max(y, exacto, x)
-        detalle = (
-            " Se cambió automáticamente a un integrador implícito por rigidez."
-            if indice > 0
-            else ""
-        )
+            evaluador = scalar_evaluator(rhs)
+        except ValueError as exc:
+            return _resultado_fallido(nombre, str(exc))
+    else:
+        evaluador = _evaluador
+
+    intentos: tuple[str, ...] = (
+        (nombre, "BDF", "Radau") if nombre in {"RK45", "DOP853"} else (nombre,)
+    )
+    resultado_seg = integrate_scipy_segment(
+        evaluador,
+        float(x0),
+        float(x_fin),
+        float(y0),
+        n_points=n_points,
+        rtol=rtol,
+        atol=atol,
+        methods=intentos,
+    )
+    if resultado_seg.success:
+        error = _error_max(resultado_seg.y, exacto, resultado_seg.t)
+        detalle = ""
+        if resultado_seg.stiff:
+            detalle += " Se cambió automáticamente a un integrador implícito por rigidez."
+        if resultado_seg.blow_up:
+            detalle += " Se detectó una posible explosión o frontera de dominio."
         return ResultadoNumerico(
-            x=x,
-            y=y,
-            metodo=candidato,
+            x=resultado_seg.t,
+            y=resultado_seg.y,
+            metodo=resultado_seg.method,
             exito=True,
-            mensaje=f"Integración exitosa con {candidato} ({x.size} puntos)." + detalle,
-            f_evaluaciones=nfev,
+            mensaje=(
+                f"Integración exitosa con {resultado_seg.method} "
+                f"({resultado_seg.t.size} puntos)." + detalle
+            ),
+            f_evaluaciones=resultado_seg.nfev,
             error_max=error,
-            rigido=rigido,
+            rigido=resultado_seg.stiff,
+            explosion=resultado_seg.blow_up,
         )
 
-    detalle = "; ".join(mensajes) if mensajes else "sin detalle"
     return _resultado_fallido(
-        nombre,
-        f"La integración numérica falló ({detalle}).",
-        f_evaluaciones=ultimo_nfev,
-        rigido=rigido,
-        explosion=any(
-            palabra in detalle.lower()
-            for palabra in ("step size", "overflow", "singular", "too large")
-        ),
+        resultado_seg.method or nombre,
+        f"La integración numérica falló ({resultado_seg.message}).",
+        f_evaluaciones=resultado_seg.nfev,
+        rigido=resultado_seg.stiff,
+        explosion=resultado_seg.blow_up,
     )
 
 
@@ -435,26 +420,53 @@ def integrar_intervalo(
             "auto", "La condición inicial x₀ debe pertenecer al intervalo."
         )
 
+    try:
+        evaluador = scalar_evaluator(rhs)
+        valor_inicial = evaluador(x0, y0)
+    except Exception as exc:
+        return _resultado_fallido("auto", str(exc))
+    if not math.isfinite(valor_inicial):
+        return _resultado_fallido(
+            "auto",
+            "La derivada no es finita en la condición inicial "
+            f"(x₀={x0:g}, y₀={y0:g}); se omite la integración numérica.",
+        )
+
     segmentos: list[ResultadoNumerico] = []
     if x0 > x_min:
         segmentos.append(
             resolver_scipy(
-                rhs, x0, y0, x_min, metodo=metodo, n_points=n_points, exacto=exacto
+                rhs,
+                x0,
+                y0,
+                x_min,
+                metodo=metodo,
+                n_points=n_points,
+                exacto=exacto,
+                _evaluador=evaluador,
             )
         )
     if x0 < x_max:
         segmentos.append(
             resolver_scipy(
-                rhs, x0, y0, x_max, metodo=metodo, n_points=n_points, exacto=exacto
+                rhs,
+                x0,
+                y0,
+                x_max,
+                metodo=metodo,
+                n_points=n_points,
+                exacto=exacto,
+                _evaluador=evaluador,
             )
         )
     exitosos = [segmento for segmento in segmentos if segmento.exito]
+    explosion = any(segmento.explosion for segmento in segmentos)
     if not exitosos:
         detalle = "; ".join(segmento.mensaje for segmento in segmentos)
         return _resultado_fallido(
             segmentos[0].metodo if segmentos else "auto",
             f"La integración numérica falló en ambos sentidos ({detalle}).",
-            explosion=any(segmento.explosion for segmento in segmentos),
+            explosion=explosion,
         )
 
     x = np.concatenate([segmento.x for segmento in exitosos])
@@ -463,11 +475,17 @@ def integrar_intervalo(
     x, y = x[orden], y[orden]
     x_unicos, indices = np.unique(x, return_index=True)
     x, y = x_unicos, y[indices]
+    if not (np.all(np.isfinite(x)) and np.all(np.isfinite(y))):
+        return _resultado_fallido(
+            "auto", "La solución numérica contiene valores no finitos.", explosion=True
+        )
     metodos = sorted({segmento.metodo for segmento in exitosos})
     mensaje = (
         f"Integración numérica exitosa en {x.size} puntos con "
         f"{'/'.join(metodos)}."
     )
+    if explosion:
+        mensaje += " Se detectó una posible explosión o frontera de dominio."
     if len(exitosos) != len(segmentos):
         mensaje += " Sólo uno de los dos sentidos pudo integrarse."
     return ResultadoNumerico(
@@ -479,7 +497,7 @@ def integrar_intervalo(
         f_evaluaciones=sum(segmento.f_evaluaciones for segmento in exitosos),
         error_max=_error_max(y, exacto, x),
         rigido=any(segmento.rigido for segmento in exitosos),
-        explosion=any(segmento.explosion for segmento in segmentos),
+        explosion=explosion,
     )
 
 
@@ -533,14 +551,15 @@ def detectar_rigidez(
     try:
         dfdy = sp.simplify(sp.diff(rhs, Y))
         if not dfdy.has(Y):
-            funcion = sp.lambdify(X, dfdy, modules=["numpy"])
+            funcion = sp.lambdify(X, dfdy, modules=lambdify_modules())
             x_muestras = np.linspace(float(x0), float(x_fin), 50)
-            valores = np.asarray(funcion(x_muestras), dtype=float)
+            with np.errstate(all="ignore"):
+                valores = np.asarray(funcion(x_muestras), dtype=float)
             finitos = valores[np.isfinite(valores)]
             if finitos.size:
                 jacobiano_max = float(np.max(np.abs(finitos)))
         else:
-            funcion = sp.lambdify((X, Y), dfdy, modules=["numpy"])
+            funcion = sp.lambdify((X, Y), dfdy, modules=lambdify_modules())
             x_muestras = np.linspace(float(x0), float(x_fin), 40)
             y_muestras = float(y0) + np.linspace(-1.0, 1.0, 21) * max(1.0, abs(float(y0)))
             xx, yy = np.meshgrid(x_muestras, y_muestras)
@@ -554,13 +573,23 @@ def detectar_rigidez(
 
     nfev: int | None = None
     try:
-        f = _preparar_funcion(rhs)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            solucion, nfev = _integrar_scipy(
-                f, float(x0), float(y0), float(x_fin), "RK45", 1e-6, 1e-9, 200
-            )
-        if not solucion.success and "step size" in str(solucion.message).lower():
+        evaluador = scalar_evaluator(rhs)
+        resultado_rk = integrate_scipy_segment(
+            evaluador,
+            float(x0),
+            float(x_fin),
+            float(y0),
+            methods=("RK45",),
+            rtol=1e-6,
+            atol=1e-9,
+            n_points=200,
+        )
+        nfev = resultado_rk.nfev
+        if (
+            not resultado_rk.success
+            and not resultado_rk.blow_up
+            and "step size" in resultado_rk.message.lower()
+        ):
             return InfoRigidez(
                 rigida=True,
                 motivo=(

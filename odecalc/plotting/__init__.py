@@ -10,7 +10,9 @@ from odecalc.plotting.data import (
     family_curves,
     isoclines,
     phase_line,
+    singular_curves,
     solution_curve,
+    tangency_points,
 )
 from odecalc.plotting.prepare import (
     autonomous_rhs_from_result,
@@ -25,7 +27,9 @@ __all__ = [
     "family_curves",
     "isoclines",
     "phase_line",
+    "singular_curves",
     "solution_curve",
+    "tangency_points",
     "autonomous_rhs_from_result",
     "family_expression_from_result",
     "plot_bounds",

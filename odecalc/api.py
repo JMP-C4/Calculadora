@@ -17,13 +17,13 @@ import sympy as sp
 
 from odecalc.classify import classify
 from odecalc.methods import solve_method, solve_with_dsolve
-from odecalc.models import Attempt, SolveResult, Step
+from odecalc.models import Attempt, Match, ParsedODE, SolveResult, Step
 from odecalc.numeric import solve_numeric
 from odecalc.parsing import parse_ode
-from odecalc.timeout import run_with_timeout
+from odecalc.timeout import TimeoutError, run_with_timeout
 from odecalc.verify import apply_initial_conditions, verify_solution
 from odecalc.verify.validity import analyze_validity
-from odecalc.symbols import X, Y
+from odecalc.symbols import X, Y, lambdify_modules
 
 
 def _numeric_steps(result: SolveResult) -> list[Step]:
@@ -31,11 +31,17 @@ def _numeric_steps(result: SolveResult) -> list[Step]:
     if numeric is None:
         return []
     status = "exitosa" if numeric.success else "fallida"
+    eq_latex = (result.input_latex or "").strip()
+    if not eq_latex and result.standard_form:
+        parsed_std = parse_ode(result.standard_form)
+        eq_latex = parsed_std.latex_str or result.standard_form
+    if not eq_latex:
+        eq_latex = r"\frac{dy}{dx} = f(x, y)"
     steps = [
         Step(
             number=1,
             title="Respaldo numérico",
-            latex=r"\frac{dy}{dx} = " + sp.latex(result.standard_form or ""),
+            latex=eq_latex,
             explanation=(
                 "No se obtuvo una solución simbólica verificable; se integra "
                 "la EDO numéricamente con SciPy."
@@ -45,7 +51,7 @@ def _numeric_steps(result: SolveResult) -> list[Step]:
         Step(
             number=2,
             title="Método y tolerancias",
-            latex=rf"\text{{{numeric.method or 'auto'}}}",
+            latex=rf"\mathrm{{Método:\ {numeric.method or 'auto'}}}",
             explanation=(
                 "Se usan integradores adaptativos con tolerancias estrictas y "
                 "cambio automático a un método implícito si se detecta rigidez."
@@ -93,14 +99,19 @@ def _compare_numeric(result: SolveResult) -> None:
     if numeric.x_arr is None or numeric.y_arr is None:
         return
     try:
-        function = sp.lambdify(X, solution.expr, modules=["numpy"])
-        expected = function(numeric.x_arr)
+        function = sp.lambdify(X, solution.expr, modules=lambdify_modules())
+        with np.errstate(all="ignore"):
+            expected = function(numeric.x_arr)
         expected = np.asarray(expected, dtype=complex)
         actual = np.asarray(numeric.y_arr, dtype=complex)
-        mask = np.isfinite(expected.real) & np.isfinite(actual.real)
+        mask = (
+            np.isfinite(expected.real)
+            & np.isfinite(actual.real)
+            & (np.abs(expected.imag) <= 1e-8)
+        )
         if not np.any(mask):
             return
-        error = float(np.max(np.abs(expected[mask] - actual[mask])))
+        error = float(np.max(np.abs(expected[mask].real - actual[mask].real)))
     except Exception:
         return
     numeric.error_estimate = error
@@ -111,28 +122,18 @@ def _compare_numeric(result: SolveResult) -> None:
         )
 
 
-def _solve_impl(
+def _solve_symbolic(
     equation: str,
+    parsed: ParsedODE,
     x0: float | None,
     y0: float | None,
-    x_min: float,
-    x_max: float,
     method: str | None,
-    compute_numeric: bool | None,
-) -> SolveResult:
-    result = SolveResult(input_text=equation)
-    start = time.perf_counter()
-
-    parse_start = time.perf_counter()
-    parsed = parse_ode(equation)
-    result.timing_ms["parse"] = (time.perf_counter() - parse_start) * 1000
-    result.input_latex = parsed.latex_str or equation
-    result.standard_form = parsed.standard_form
-
-    if parsed.error is not None:
-        result.error = parsed.error
-        result.timing_ms["total"] = (time.perf_counter() - start) * 1000
-        return result
+) -> tuple[SolveResult, bool]:
+    result = SolveResult(
+        input_text=equation,
+        input_latex=parsed.latex_str or equation,
+        standard_form=parsed.standard_form,
+    )
 
     classify_start = time.perf_counter()
     matches = classify(parsed)
@@ -212,8 +213,6 @@ def _solve_impl(
                 )
             )
             if verification.status == "ok":
-                from odecalc.models import Match
-
                 match = Match(
                     method="dsolve",
                     name="Respaldo SymPy (dsolve)",
@@ -253,6 +252,22 @@ def _solve_impl(
                 rhs=parsed.rhs,
                 original_F=parsed.F,
             )
+            if particular is None and singular:
+                for candidate in singular:
+                    sing_part, sing_warnings = apply_initial_conditions(
+                        candidate,
+                        float(x0),
+                        float(y0),
+                        rhs=parsed.rhs,
+                        original_F=parsed.F,
+                    )
+                    if sing_part is not None:
+                        particular = sing_part
+                        warnings = [
+                            "La condición inicial corresponde a una solución singular o de equilibrio.",
+                            *sing_warnings,
+                        ]
+                        break
             result.particular = particular
             result.warnings.extend(warnings)
             if particular is not None:
@@ -270,9 +285,25 @@ def _solve_impl(
             y0=y0,
         )
 
+    return result, chosen is not None
+
+
+def _attach_numeric(
+    result: SolveResult,
+    parsed: ParsedODE,
+    *,
+    chosen_exists: bool,
+    x0: float | None,
+    y0: float | None,
+    x_min: float,
+    x_max: float,
+    compute_numeric: bool | None,
+) -> None:
     should_compute_numeric = compute_numeric
     if should_compute_numeric is None:
-        should_compute_numeric = chosen is None or (x0 is not None and y0 is not None)
+        should_compute_numeric = (not chosen_exists) or (
+            x0 is not None and y0 is not None
+        )
 
     if (
         should_compute_numeric
@@ -293,12 +324,86 @@ def _solve_impl(
         result.timing_ms["numeric"] = (time.perf_counter() - numeric_start) * 1000
         if not result.numeric.success:
             result.warnings.append(result.numeric.message)
-        elif chosen is None:
+        elif not chosen_exists:
             result.steps = _numeric_steps(result)
             result.chosen_method = "numeric"
             result.validity = analyze_validity(parsed.rhs, None, x0=x0, y0=y0)
         else:
             _compare_numeric(result)
+
+
+def _solve_impl(
+    equation: str,
+    x0: float | None,
+    y0: float | None,
+    x_min: float,
+    x_max: float,
+    method: str | None,
+    compute_numeric: bool | None,
+    *,
+    symbolic_timeout: float | None = None,
+) -> SolveResult:
+    start = time.perf_counter()
+
+    parse_start = time.perf_counter()
+    parsed = parse_ode(equation)
+    parse_ms = (time.perf_counter() - parse_start) * 1000
+
+    if parsed.error is not None:
+        result = SolveResult(
+            input_text=equation,
+            input_latex=parsed.latex_str or equation,
+            standard_form=parsed.standard_form,
+            error=parsed.error,
+        )
+        result.timing_ms["parse"] = parse_ms
+        result.timing_ms["total"] = (time.perf_counter() - start) * 1000
+        return result
+
+    chosen_exists = False
+    if symbolic_timeout is not None:
+        try:
+            result, chosen_exists = run_with_timeout(
+                _solve_symbolic,
+                equation,
+                parsed,
+                x0,
+                y0,
+                method,
+                timeout=symbolic_timeout,
+            )
+        except TimeoutError as exc:
+            if (
+                parsed.rhs is not None
+                and x0 is not None
+                and y0 is not None
+                and compute_numeric is not False
+            ):
+                result = SolveResult(
+                    input_text=equation,
+                    input_latex=parsed.latex_str or equation,
+                    standard_form=parsed.standard_form,
+                )
+                result.warnings.append(
+                    f"El cálculo simbólico superó {symbolic_timeout:g} s ({exc}); "
+                    "se utilizó el respaldo numérico."
+                )
+            else:
+                raise
+    else:
+        result, chosen_exists = _solve_symbolic(equation, parsed, x0, y0, method)
+
+    result.timing_ms["parse"] = parse_ms
+    _attach_numeric(
+        result,
+        parsed,
+        chosen_exists=chosen_exists,
+        x0=x0,
+        y0=y0,
+        x_min=x_min,
+        x_max=x_max,
+        compute_numeric=compute_numeric,
+    )
 
     if result.general is None and (result.numeric is None or not result.numeric.success):
         result.error = (
@@ -339,23 +444,21 @@ def solve(
         ``True``/``False`` fuerza o desactiva el respaldo numérico; ``None``
         lo calcula cuando no hay solución simbólica o cuando hay PVI.
     timeout:
-        Si se indica, el cálculo se ejecuta en un proceso aparte y se
-        interrumpe al superar ese número de segundos.
+        Si se indica, el cálculo simbólico se ejecuta en un proceso aparte y
+        se interrumpe al superar ese número de segundos (degradando a numérico
+        si hay PVI disponible).
     """
 
-    if timeout is not None:
-        return run_with_timeout(
-            _solve_impl,
-            equation,
-            x0,
-            y0,
-            x_min,
-            x_max,
-            method,
-            compute_numeric,
-            timeout=timeout,
-        )
-    return _solve_impl(equation, x0, y0, x_min, x_max, method, compute_numeric)
+    return _solve_impl(
+        equation,
+        x0,
+        y0,
+        x_min,
+        x_max,
+        method,
+        compute_numeric,
+        symbolic_timeout=timeout,
+    )
 
 
 __all__ = ["solve"]

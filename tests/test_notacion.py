@@ -6,12 +6,15 @@ import sympy as sp
 
 from core.notacion import (
     NATURAL,
+    adaptar_latex_mathtext,
+    codigo_a_latex,
     formatear,
     formatear_texto,
     fragmentos,
     infijo,
     latex_a_infijo,
     latex_a_natural,
+    leer_preferencia,
     normalizar,
 )
 from odecalc.models import Solution
@@ -180,3 +183,53 @@ def test_formatear_texto_envuelve_formulas_dentro_de_la_prosa() -> None:
     assert "**" not in natural
     assert "y = C*exp(x)" in infija
     assert "**" not in infija
+
+
+def test_envolver_comandos_no_parte_prefijos_de_ecuacion() -> None:
+    texto = r"Se despeja y = v^{-\frac{1}{2}}. Luego G(u) = \sin{\left(u \right)}."
+
+    for modo in ("Algebraica", NATURAL):
+        frags = fragmentos(texto, modo)
+        formulas = [contenido for contenido, es_m in frags if es_m]
+        assert len(formulas) == 2
+        for formula in formulas:
+            adaptado = adaptar_latex_mathtext(formula)
+            assert adaptado.count("{") == adaptado.count("}")
+
+
+def test_formatear_texto_multilinea_no_omite_formulas_en_prosa() -> None:
+    texto = "Solución: $y = C e^{x}$\nForma estándar: dy/dx = (x**3 - 2*y)/x\nIntervalo: (-∞, ∞)"
+
+    algebraica = formatear_texto(texto, "Algebraica")
+
+    assert r"$\frac{dy}{dx} = (x^3 - 2\cdot y)/x$" in algebraica
+    assert r"$(-\infty, \infty)$" in algebraica
+
+
+def test_latex_a_natural_y_codigo_con_anidacion() -> None:
+    nat_exp = latex_a_natural(r"y = 2 e^{\frac{x^{2}}{2}}")
+    nat_atan = latex_a_natural(r"\operatorname{atan}{\left(\frac{y - 2}{x + 1} \right)}")
+    cod_anidado = codigo_a_latex("y = exp(-(x**2)/2) + sqrt(1 + (y - 1)**2)")
+
+    assert "frac" not in nat_exp
+    assert "{" in nat_exp and "}" in nat_exp
+    assert "(y - 2)/(x + 1)" in nat_atan
+    assert "{" not in nat_atan
+    assert r"e^{-(x^2)/2}" in cod_anidado
+    assert r"\sqrt{1 + (y - 1)^2}" in cod_anidado
+
+
+def test_adaptar_latex_mathtext_soporta_cases_y_flechas() -> None:
+    adaptado = adaptar_latex_mathtext(
+        r"\begin{cases} \frac{x^{2}}{2} & \text{for}\: x \leq 0 \\ - \frac{x^{2}}{2} & \text{otherwise} \end{cases}"
+    )
+    assert r"\begin{cases}" not in adaptado
+    assert r"\left\{" in adaptado
+    assert r"A \Longrightarrow B" == adaptar_latex_mathtext(r"A \implies B")
+    assert r"A \Leftrightarrow B" == adaptar_latex_mathtext(r"A \iff B")
+
+
+def test_leer_preferencia_acepta_default_para_escritorio(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert leer_preferencia() == NATURAL
+    assert leer_preferencia(default="Algebraica") == "Algebraica"

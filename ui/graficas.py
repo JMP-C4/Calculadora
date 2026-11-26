@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import sympy as sp
 from plotly.subplots import make_subplots
 
+from odecalc.plotting import singular_curves, tangency_points
 from odecalc.symbols import X, Y
 
 _COLORES = (
@@ -64,6 +65,53 @@ def _rhs_funcion(rhs: sp.Expr):
     return sp.lambdify((X, Y), rhs, modules=["numpy"])
 
 
+def _rango_x(resultado) -> tuple[float, float]:
+    """Intervalo horizontal del resultado, con respaldo seguro."""
+
+    intervalo = getattr(resultado, "intervalo", None)
+    if intervalo is not None and len(intervalo) == 2:
+        try:
+            x_min, x_max = float(intervalo[0]), float(intervalo[1])
+            if x_min < x_max:
+                return x_min, x_max
+        except (TypeError, ValueError):
+            pass
+    return -5.0, 5.0
+
+
+def _anadir_singular(
+    figura: go.Figure, resultado, *, x_min: float, x_max: float
+) -> bool:
+    """Superpone la envolvente singular y el punto de tangencia de la particular."""
+
+    motor = getattr(resultado, "resultado_motor", None) or resultado
+    curvas = singular_curves(motor, x_min=x_min, x_max=x_max)
+    for curva in curvas:
+        figura.add_trace(
+            go.Scatter(
+                x=curva["x"],
+                y=curva["y"],
+                mode="lines",
+                name=curva["label"],
+                line=dict(color="#7c3aed", width=3.2, dash="dash"),
+                legendgroup="envolvente",
+            )
+        )
+    for punto in tangency_points(motor, x_min=x_min, x_max=x_max):
+        figura.add_trace(
+            go.Scatter(
+                x=[punto["x"]],
+                y=[punto["y"]],
+                mode="markers+text",
+                text=[punto["label"]],
+                textposition="top center",
+                name="Tangencia",
+                marker=dict(color="#b45309", size=12, symbol="diamond"),
+            )
+        )
+    return bool(curvas)
+
+
 def figura_solucion(
     resultado,
     *,
@@ -98,6 +146,8 @@ def figura_solucion(
                 marker=dict(color=_COLORES[1], size=10, symbol="circle"),
             )
         )
+    x_min, x_max = _rango_x(resultado)
+    _anadir_singular(figura, resultado, x_min=x_min, x_max=x_max)
     for indice, (xs, ys, etiqueta) in enumerate(curvas_extra or (), start=2):
         figura.add_trace(
             go.Scatter(
@@ -680,6 +730,7 @@ def figura_sensibilidad(sensibilidad: dict[str, float], *, tema_oscuro: bool = F
 def figura_familia(
     curvas: Iterable[tuple[np.ndarray, np.ndarray, str]],
     *,
+    resultado=None,
     tema_oscuro: bool = False,
     altura: int = 430,
 ) -> go.Figure:
@@ -699,6 +750,9 @@ def figura_familia(
                 ),
             )
         )
+    if resultado is not None:
+        x_min, x_max = _rango_x(resultado)
+        _anadir_singular(figura, resultado, x_min=x_min, x_max=x_max)
     return _acabado(
         figura,
         titulo="Familia de curvas solución",

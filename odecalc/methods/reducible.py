@@ -6,7 +6,10 @@ import sympy as sp
 
 from odecalc.classify.classifier import reducible_linear_coeffs
 from odecalc.methods.common import (
+    _signed_term_latex,
     explicit_solution,
+    format_linear_combo_latex,
+    format_shift_latex,
     implicit_solution,
     make_step,
     safe_integrate,
@@ -47,7 +50,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                 )
             ),
             "El lado derecho es un cociente de dos rectas. El determinante "
-            f"a₁b₂ − a₂b₁ = {sp.sstr(determinant)} decide la sustitución.",
+            rf"$a_1 b_2 - a_2 b_1 = {sp.latex(determinant)}$ decide la sustitución.",
         )
     ]
 
@@ -69,8 +72,9 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             make_step(
                 2,
                 "Trasladar el origen a la intersección",
-                rf"X = x - {sp.latex(x_shift)}, \qquad Y = y - {sp.latex(y_shift)}",
-                "Con las rectas cortándose en (h,k), la traslación elimina los "
+                rf"{format_shift_latex('X', 'x', x_shift)}, \qquad "
+                rf"{format_shift_latex('Y', 'y', y_shift)}",
+                r"Con las rectas cortándose en $(h, k)$, la traslación elimina los "
                 "términos constantes y deja una EDO homogénea.",
             )
         )
@@ -94,7 +98,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                     4,
                     "Integrar",
                     r"v = C \quad\Longrightarrow\quad y = k + C(x - h)",
-                    "Si v es constante, la solución es una recta que pasa por la "
+                    r"Si $v$ es constante, la solución es una recta que pasa por la "
                     "intersección de las dos rectas originales.",
                 )
             )
@@ -109,7 +113,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                 4,
                 "Separar e integrar",
                 f"{sp.latex(left)} = \\ln\\left|{sp.latex(X - x_shift)}\\right| + C",
-                "Se separan las variables v y X y se integra cada lado.",
+                r"Se separan las variables $v$ y $X$ y se integra cada lado.",
             )
         )
 
@@ -128,7 +132,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                     5,
                     "Volver a x, y",
                     sp.latex(sp.Eq(Y, solution)),
-                    "Se sustituye v = (y-k)/(x-h) y se despeja y.",
+                    r"Se sustituye $v = \frac{y - k}{x - h}$ y se despeja $y$.",
                 )
             )
             return explicit_solution(solution), steps, []
@@ -142,7 +146,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                 5,
                 "Escribir la solución implícita",
                 sp.latex(potential) + " = C",
-                "No se pudo despejar v; se conserva la relación implícita.",
+                r"No se pudo despejar $v$; se conserva la relación implícita.",
             )
         )
         return implicit_solution(potential), steps, []
@@ -156,18 +160,19 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
         make_step(
             2,
             "Usar la sustitución u = a₁x + b₁y",
-            rf"u = {sp.latex(a1)}x + {sp.latex(b1)}y",
+            rf"u = {format_linear_combo_latex(a1, b1)}",
             "Como las rectas son paralelas, el cociente depende sólo de "
-            "u = a₁x + b₁y.",
+            r"$u = a_1 x + b_1 y$.",
         )
     )
+    frac_tex = rf"\frac{{{sp.latex(U + c1)}}}{{{sp.latex(scale * U + c2)}}}"
+    b1_term = _signed_term_latex(b1, frac_tex, include_plus=True)
     steps.append(
         make_step(
             3,
             "Transformar la EDO",
-            f"\\frac{{du}}{{dx}} = {sp.latex(a1)} + {sp.latex(b1)}"
-            f"\\cdot\\frac{{{sp.latex(U + c1)}}}{{{sp.latex(scale * U + c2)}}}",
-            "Se deriva u y se sustituye el lado derecho original.",
+            rf"\frac{{du}}{{dx}} = {sp.latex(a1)}{b1_term}",
+            r"Se deriva $u$ y se sustituye el lado derecho original.",
         )
     )
 
@@ -181,7 +186,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             4,
             "Separar e integrar",
             f"{sp.latex(integral)} = x + C",
-            "La EDO resultante es separable en u y x.",
+            r"La EDO resultante es separable en $u$ y $x$.",
         )
     )
     explicit_u = next(
@@ -199,7 +204,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                 5,
                 "Volver a y",
                 sp.latex(sp.Eq(Y, solution)),
-                "Se despeja y de u = a₁x + b₁y.",
+                r"Se despeja $y$ de $u = a_1 x + b_1 y$.",
             )
         )
         return explicit_solution(solution), steps, []
@@ -210,7 +215,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             5,
             "Escribir la solución implícita",
             sp.latex(potential) + " = C",
-            "No se pudo despejar u; se conserva la relación implícita.",
+            r"No se pudo despejar $u$; se conserva la relación implícita.",
         )
     )
     return implicit_solution(potential), steps, []

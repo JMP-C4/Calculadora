@@ -27,7 +27,9 @@ from odecalc.plotting import (
     phase_line,
     plot_bounds,
     rhs_from_result,
+    singular_curves,
     solution_curve,
+    tangency_points,
 )
 from odecalc.symbols import X, Y
 
@@ -198,17 +200,17 @@ class PlotPanel(ttk.Frame):
         self.figure.clear()
         self.axes = self.figure.add_subplot(111)
         self.axes.grid(True, linestyle="--", alpha=0.35)
-        self.axes.set_xlabel("x")
-        self.axes.set_ylabel("y")
+        self.axes.set_xlabel("$x$")
+        self.axes.set_ylabel("$y$")
         if title:
             self.axes.set_title(title)
 
     def _reset_3d(self) -> None:
         self.figure.clear()
         self.axes = self.figure.add_subplot(111, projection="3d")
-        self.axes.set_xlabel("x")
-        self.axes.set_ylabel("y")
-        self.axes.set_zlabel("z = f(x, y)")
+        self.axes.set_xlabel("$x$")
+        self.axes.set_ylabel("$y$")
+        self.axes.set_zlabel(r"$z = f(x, y)$")
 
     def _show_axes_message(self, message: str) -> None:
         self.figure.clear()
@@ -253,17 +255,55 @@ class PlotPanel(ttk.Frame):
     # ------------------------------------------------------------------
     # Tipos de gráfica
     # ------------------------------------------------------------------
+    def _plot_singular(self, result: SolveResult) -> bool:
+        """Dibuja la envolvente singular y los puntos de tangencia."""
+
+        x_min, x_max, _, _ = self._plot_bounds(result)
+        curvas = singular_curves(result, x_min=x_min, x_max=x_max)
+        puntos = tangency_points(result, x_min=x_min, x_max=x_max)
+        for curva in curvas:
+            self.axes.plot(
+                curva["x"],
+                curva["y"],
+                color="#7c3aed",
+                linewidth=2.8,
+                linestyle="--",
+                label=curva["label"],
+                zorder=4,
+            )
+        for punto in puntos:
+            self.axes.scatter(
+                [punto["x"]],
+                [punto["y"]],
+                color="#b45309",
+                marker="D",
+                s=70,
+                zorder=6,
+                label=punto["label"],
+            )
+            self.axes.annotate(
+                punto["label"],
+                (punto["x"], punto["y"]),
+                textcoords="offset points",
+                xytext=(8, 8),
+                fontsize=8,
+                color="#b45309",
+            )
+        return bool(curvas or puntos)
+
     def _draw_solution(self, result: SolveResult) -> None:
-        self._reset_2d(title="Solución de la EDO")
-        curve = solution_curve(result)
+        self._reset_2d(title=r"Solución de la EDO $y(x)$")
+        x_min, x_max, _y_min, _y_max = self._plot_bounds(result)
+        curve = solution_curve(result, x_min=x_min, x_max=x_max)
         if curve is not None and len(curve["x"]):
             self.axes.plot(
                 curve["x"],
                 curve["y"],
                 color="#1565c0",
                 linewidth=2,
-                label="Solución",
+                label=r"Solución $y(x)$",
             )
+            self._plot_singular(result)
             self.axes.legend(loc="best", fontsize=9)
             self.figure.tight_layout()
             return
@@ -277,7 +317,9 @@ class PlotPanel(ttk.Frame):
                 or "No hay solución particular explícita ni curva numérica para graficar."
             )
             return
-        self._plot_family_expression(expression, title="Familia de soluciones")
+        self._plot_family_expression(
+            expression, title="Familia de soluciones", result=result
+        )
         self._note(
             "No hay una solución particular explícita; se muestra la familia "
             "general. Selecciona «Familia de curvas» para verla con más detalle."
@@ -305,7 +347,7 @@ class PlotPanel(ttk.Frame):
             self._fail("No se pudo evaluar el campo de direcciones en el intervalo.")
             return
 
-        self._reset_2d(title="Campo de direcciones")
+        self._reset_2d(title=r"Campo de direcciones ($\frac{dy}{dx} = f(x, y)$)")
         self.axes.quiver(
             data["x"][mask],
             data["y"][mask],
@@ -316,21 +358,31 @@ class PlotPanel(ttk.Frame):
             pivot="mid",
             width=0.002,
         )
-        curve = solution_curve(result)
+        curve = solution_curve(result, x_min=x_min, x_max=x_max)
         if curve is not None and len(curve["x"]):
             self.axes.plot(
                 curve["x"],
                 curve["y"],
                 color="#d84315",
                 linewidth=2,
-                label="Solución",
+                label=r"Solución $y(x)$",
             )
+        self._plot_singular(result)
+        if self.axes.get_legend_handles_labels()[0]:
             self.axes.legend(loc="best", fontsize=9)
         self.axes.set_xlim(x_min, x_max)
         self.axes.set_ylim(y_min, y_max)
         self.figure.tight_layout()
         if note:
             self._note(note)
+        if not np.all(mask):
+            aviso = (
+                "Hay zonas sin pendiente real (por ejemplo, por encima de la "
+                "envolvente); se omiten en el campo."
+            )
+            self.notice.configure(
+                text=f"{self.notice.cget('text')} {aviso}".strip()
+            )
 
     def _draw_isoclines(self, result: SolveResult) -> None:
         rhs, note = self._rhs(result)
@@ -352,13 +404,13 @@ class PlotPanel(ttk.Frame):
             )
             return
 
-        self._reset_2d(title="Isoclinas f(x, y) = k")
+        self._reset_2d(title=r"Isoclinas $f(x, y) = k$")
         for line in lines:
             self.axes.plot(
                 line["x"],
                 line["y"],
                 linewidth=1.6,
-                label=f"k = {line['level']:g}",
+                label=f"$k = {line['level']:g}$",
             )
         self.axes.set_xlim(x_min, x_max)
         self.axes.set_ylim(y_min, y_max)
@@ -367,7 +419,13 @@ class PlotPanel(ttk.Frame):
         if note:
             self._note(note)
 
-    def _plot_family_expression(self, expression: sp.Expr, *, title: str) -> bool:
+    def _plot_family_expression(
+        self,
+        expression: sp.Expr,
+        *,
+        title: str,
+        result: SolveResult | None = None,
+    ) -> bool:
         x_min, x_max = self._bounds
         constants = [
             symbol for symbol in expression.free_symbols if symbol not in {X, Y}
@@ -389,8 +447,18 @@ class PlotPanel(ttk.Frame):
                 )
                 plotted = True
         else:
-            colors = ("#1565c0", "#2e7d32", "#6a1b9a", "#ef6c00", "#00838f")
-            for value, color in zip((-2.0, -1.0, 0.0, 1.0, 2.0), colors):
+            colors = (
+                "#1565c0",
+                "#2e7d32",
+                "#6a1b9a",
+                "#ef6c00",
+                "#00838f",
+                "#b5651d",
+                "#3949ab",
+            )
+            for value, color in zip(
+                (-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0), colors
+            ):
                 curves = family_curves(
                     expression,
                     constants=(value,),
@@ -408,6 +476,8 @@ class PlotPanel(ttk.Frame):
                     label=f"C = {value:g}",
                 )
                 plotted = True
+        if result is not None:
+            plotted = self._plot_singular(result) or plotted
         if plotted:
             self.axes.set_title(title)
             self.axes.legend(loc="best", fontsize=9)
@@ -420,7 +490,9 @@ class PlotPanel(ttk.Frame):
             self._fail(note or "No hay una familia de curvas para graficar.")
             return
         self._reset_2d()
-        if not self._plot_family_expression(expression, title="Familia de curvas"):
+        if not self._plot_family_expression(
+            expression, title="Familia de curvas", result=result
+        ):
             self._fail(
                 "La expresión de la familia no se pudo evaluar en el intervalo."
             )
@@ -441,7 +513,7 @@ class PlotPanel(ttk.Frame):
             self._fail("No se pudo evaluar f(y) en el intervalo de la línea de fase.")
             return
 
-        self._reset_2d(title="Línea de fase")
+        self._reset_2d(title=r"Línea de fase ($\frac{dy}{dx} = f(y)$)")
         self.axes.plot(
             data["y"][mask],
             data["f(y)"][mask],
@@ -449,8 +521,8 @@ class PlotPanel(ttk.Frame):
             linewidth=2,
         )
         self.axes.axhline(0.0, color="#616161", linewidth=1, linestyle="--")
-        self.axes.set_xlabel("y")
-        self.axes.set_ylabel("f(y)")
+        self.axes.set_xlabel("$y$")
+        self.axes.set_ylabel("$f(y)$")
         self.figure.tight_layout()
         if note:
             self._note(note)
@@ -478,14 +550,14 @@ class PlotPanel(ttk.Frame):
         data = phase_line(rhs, y_min=y_min, y_max=y_max)
         mask = np.isfinite(data["f(y)"])
 
-        self._reset_2d(title="Puntos de equilibrio")
+        self._reset_2d(title=r"Puntos de equilibrio ($f(y) = 0$)")
         if np.any(mask):
             self.axes.plot(
                 data["y"][mask],
                 data["f(y)"][mask],
                 color="#90a4ae",
                 linewidth=1.5,
-                label="f(y)",
+                label="$f(y)$",
             )
         colors = {
             "asintóticamente estable": "#2e7d32",
@@ -501,7 +573,7 @@ class PlotPanel(ttk.Frame):
                 zorder=5,
             )
             self.axes.annotate(
-                f"y = {point['y']:g}\n{point['stability']}",
+                f"$y = {point['y']:g}$\n{point['stability']}",
                 (point["y"], 0.0),
                 textcoords="offset points",
                 xytext=(8, 10),
@@ -509,8 +581,8 @@ class PlotPanel(ttk.Frame):
                 color=color,
             )
         self.axes.axhline(0.0, color="#616161", linewidth=1, linestyle="--")
-        self.axes.set_xlabel("y")
-        self.axes.set_ylabel("f(y)")
+        self.axes.set_xlabel("$y$")
+        self.axes.set_ylabel("$f(y)$")
         self.axes.legend(loc="best", fontsize=9)
         self.figure.tight_layout()
         if note:
@@ -539,6 +611,7 @@ class PlotPanel(ttk.Frame):
         if not np.any(np.isfinite(z_values)):
             self._fail("La superficie no tiene valores finitos en el intervalo.")
             return
+        z_values = np.where(np.isfinite(z_values), z_values, np.nan)
 
         surface = self.axes.plot_surface(
             grid_x,

@@ -27,20 +27,20 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             1,
             "Aplicar la sustitución y = u x",
             sp.latex(sp.Eq(sp.Symbol("y"), U * X)),
-            "En una EDO homogénea de grado cero, y = ux convierte la ecuación "
-            "en una EDO separable en u y x.",
+            r"En una EDO homogénea de grado cero, $y = ux$ convierte la ecuación "
+            r"en una EDO separable en $u$ y $x$.",
         ),
         make_step(
             2,
             "Derivar la sustitución",
             r"\frac{dy}{dx} = u + x\frac{du}{dx}",
-            "Se deriva y = ux con la regla del producto.",
+            r"Se deriva $y = ux$ con la regla del producto.",
         ),
         make_step(
             3,
             "Sustituir en la EDO",
             f"u + x\\frac{{du}}{{dx}} = {sp.latex(transformed)}",
-            "La ecuación resultante sólo contiene u, x y du/dx.",
+            r"La ecuación resultante sólo contiene $u$, $x$ y $\frac{du}{dx}$.",
         ),
     ]
 
@@ -51,7 +51,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                 4,
                 "Integrar",
                 r"u = C \quad\Longrightarrow\quad y = Cx",
-                "Si u' = 0, entonces u es constante y la solución es una recta "
+                r"Si $u' = 0$, entonces $u$ es constante y la solución es una recta "
                 "que pasa por el origen.",
             )
         )
@@ -62,7 +62,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             4,
             "Separar variables",
             rf"\frac{{du}}{{{sp.latex(difference)}}} = \frac{{dx}}{{x}}",
-            "Se agrupan los términos en u y en x.",
+            r"Se agrupan los términos en $u$ y en $x$.",
         )
     )
 
@@ -94,7 +94,7 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
                 6,
                 "Volver a las variables originales",
                 sp.latex(sp.Eq(Y, solution)),
-                "Se sustituye u = y/x y se despeja y.",
+                r"Se sustituye $u = \frac{y}{x}$ y se despeja $y$.",
             )
         )
         return explicit_solution(solution), steps, []
@@ -105,8 +105,8 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
             6,
             "Escribir la solución implícita",
             sp.latex(potential) + " = C",
-            "No se pudo despejar u; se conserva la relación implícita con "
-            "u = y/x.",
+            r"No se pudo despejar $u$; se conserva la relación implícita con "
+            r"$u = \frac{y}{x}$.",
         )
     )
     return implicit_solution(potential), steps, []

@@ -37,9 +37,8 @@ def solve(parsed: ParsedODE) -> tuple[Solution, list[Step], list[Solution]]:
             1,
             "Respaldo simbólico: sympy.dsolve",
             sp.latex(raw),
-            "Ningún método propio produjo una solución verificable. Se usa "
-            "dsolve como respaldo; el resultado se verificará antes de "
-            "presentarlo como correcto.",
+            r"Ningún método propio produjo una solución verificable. Se usa $\mathrm{dsolve}$ "
+            "como respaldo; el resultado se verificará antes de presentarlo como correcto.",
         )
     ]
 

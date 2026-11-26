@@ -65,6 +65,19 @@ def test_implicit_clairaut_form() -> None:
     assert parsed.F is not None
 
 
+def test_latex_clairaut_keeps_derivative_between_parentheses() -> None:
+    texto = r"$$y = x\frac{dy}{dx} - \left(\frac{dy}{dx}\right)^2$$"
+    from odecalc.parsing.parser import _latex_to_plain
+
+    plano = _latex_to_plain(texto)
+    assert "x(dy/dx)" in plano
+    assert "((dy/dx))**(2)" in plano
+    parsed = parse_ode(texto)
+    assert parsed.error is None
+    assert parsed.kind == "implicit"
+    assert parsed.F is not None
+
+
 def test_unicode_and_implicit_multiplication() -> None:
     parsed = parse_ode("y' = 2x + 3y² + √(x)")
     assert parsed.error is None

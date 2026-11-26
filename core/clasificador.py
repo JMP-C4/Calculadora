@@ -88,22 +88,21 @@ def _es_logistica(rhs: sp.Expr) -> bool:
     return bool(a2 != 0 and a1 != 0 and a0 == 0)
 
 
-def clasificar(ecuacion: str | Ecuacion) -> list[TipoDetectado]:
-    """Devuelve todos los tipos aplicables, ordenados por prioridad."""
+def detectados_desde_matches(
+    matches: list[object],
+    ecuacion: Ecuacion,
+) -> list[TipoDetectado]:
+    """Construye y ordena etiquetas de clasificación a partir de ``Match``."""
 
-    if isinstance(ecuacion, str):
-        ecuacion = parsear(ecuacion)
-
-    detectados: list[TipoDetectado] = []
-    for match in _clasificar_motor(ecuacion.parsed):
-        detectados.append(
-            TipoDetectado(
-                id=match.method,
-                etiqueta=etiqueta_metodo(match.method),
-                evidencia=match.evidence,
-                prioridad=match.priority,
-            )
+    detectados: list[TipoDetectado] = [
+        TipoDetectado(
+            id=match.method,
+            etiqueta=etiqueta_metodo(match.method),
+            evidencia=match.evidence,
+            prioridad=match.priority,
         )
+        for match in matches
+    ]
 
     if ecuacion.es_autonoma:
         detectados.append(
@@ -134,6 +133,15 @@ def clasificar(ecuacion: str | Ecuacion) -> list[TipoDetectado]:
     return sorted(unicos.values(), key=lambda item: (item.prioridad, item.id))
 
 
+def clasificar(ecuacion: str | Ecuacion) -> list[TipoDetectado]:
+    """Devuelve todos los tipos aplicables, ordenados por prioridad."""
+
+    if isinstance(ecuacion, str):
+        ecuacion = parsear(ecuacion)
+
+    return detectados_desde_matches(_clasificar_motor(ecuacion.parsed), ecuacion)
+
+
 def tipo_principal(ecuacion: str | Ecuacion) -> str:
     """Etiqueta del primer tipo aplicable, útil para encabezados."""
 
@@ -150,6 +158,7 @@ def tipo_principal(ecuacion: str | Ecuacion) -> str:
 __all__ = [
     "TipoDetectado",
     "clasificar",
+    "detectados_desde_matches",
     "etiqueta_metodo",
     "tipo_principal",
 ]

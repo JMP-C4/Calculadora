@@ -28,6 +28,7 @@ from core.modelos import MODELOS, instanciar_modelo
 from core.notacion import formatear_texto
 from core.parser import parsear
 from core.tipos import EntradaInvalida
+from odecalc.plotting import singular_curves
 
 from ui.componentes import (
     bloque_scroll,
@@ -174,6 +175,21 @@ def seccion_campo(resultado) -> None:
             }
         )
     _anadir_curva_clic(figura)
+    motor = getattr(resultado, "resultado_motor", None) or resultado
+    envolventes = singular_curves(
+        motor, x_min=float(x_min), x_max=float(x_max), n_points=400
+    )
+    for curva in envolventes:
+        figura.add_trace(
+            {
+                "type": "scatter",
+                "x": curva["x"],
+                "y": curva["y"],
+                "mode": "lines",
+                "name": curva["label"],
+                "line": {"color": "#7c3aed", "width": 3, "dash": "dash"},
+            }
+        )
 
     if activar_clic:
         evento = lienzo(
@@ -221,6 +237,11 @@ def seccion_campo(resultado) -> None:
                 st.rerun()
     else:
         lienzo(figura)
+    if envolventes:
+        st.caption(
+            "Las zonas sin pendiente real (por encima de la envolvente) se "
+            "omiten; por debajo pueden pasar dos ramas por cada punto."
+        )
 
 
 def seccion_solucion_grafica(resultado) -> None:
@@ -332,10 +353,22 @@ def seccion_graficas(resultado) -> None:
             )
         else:
             lienzo(
-                figura_familia(curvas, tema_oscuro=tema_actual()),
+                figura_familia(
+                    curvas, resultado=resultado, tema_oscuro=tema_actual()
+                ),
                 key="grafica_familia",
             )
-            st.caption("Cada curva corresponde a un valor distinto de la constante C.")
+            motor = getattr(resultado, "resultado_motor", None) or resultado
+            if getattr(motor, "singular_solutions", None):
+                st.caption(
+                    "Cada curva corresponde a un valor de C; la envolvente "
+                    "singular se dibuja discontinua y el diamante marca la "
+                    "tangencia de la solución particular."
+                )
+            else:
+                st.caption(
+                    "Cada curva corresponde a un valor distinto de la constante C."
+                )
     elif modo in ("Línea de fase", "Puntos de equilibrio"):
         datos = _datos_autonomos(resultado)
         if datos is None:
@@ -669,6 +702,30 @@ def render_visualizacion() -> None:
         render_incertidumbre(cabecera=False)
 
 
+def _resumen_estado(resultado) -> None:
+    """Tira de indicadores equivalente a la barra de estado del escritorio."""
+
+    motor = getattr(resultado, "resultado_motor", None)
+    tiempos = getattr(motor, "timing_ms", None)
+    total = tiempos.get("total") if isinstance(tiempos, dict) else tiempos
+    if not isinstance(total, (int, float)):
+        total = None
+
+    certificado = getattr(resultado, "certificado", None)
+    estado = getattr(certificado, "etiqueta", None) or "—"
+    metodo = str(getattr(resultado, "tipo", None) or "—")
+    camino = str(getattr(resultado, "camino", None) or "—")
+
+    columnas = st.columns(3)
+    columnas[0].metric("Método", metodo[:36])
+    columnas[1].metric("Camino", camino)
+    columnas[2].metric(
+        "Tiempo de cálculo",
+        f"{float(total):.0f} ms" if total is not None else "—",
+    )
+    st.caption(f"Certificado: {estado}")
+
+
 def render_salida() -> None:
     """Vista de salida completa: resultado, métodos, pasos y advertencias."""
 
@@ -685,6 +742,7 @@ def render_salida() -> None:
 
     st.caption("Notación")
     notacion = selector_notacion()
+    _resumen_estado(resultado)
     seccion_solucion(resultado, mostrar_selector=False)
     seccion_metodos(resultado, notacion=notacion)
     seccion_certificado(resultado, notacion=notacion)
@@ -708,6 +766,7 @@ def render_pasos() -> None:
         seccion_modelos()
         return
 
+    _resumen_estado(resultado)
     with tarjeta("Solución de referencia", icono="pin"):
         mostrar_solucion(resultado)
     seccion_pasos(resultado)

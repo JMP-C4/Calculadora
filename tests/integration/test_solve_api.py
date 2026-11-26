@@ -11,7 +11,7 @@ import sympy as sp
 import odecalc.api as api_module
 from odecalc.api import _compare_numeric, _numeric_steps, solve
 from odecalc.models import NumericResult, Solution, SolveResult
-from odecalc.symbols import X
+from odecalc.symbols import C, X
 from odecalc.timeout import TimeoutError, run_with_timeout
 
 
@@ -256,6 +256,48 @@ def test_compare_numeric_warns_on_large_difference() -> None:
     assert result.numeric is not None
     assert result.numeric.error_estimate is not None
     assert any("difieren" in warning for warning in result.warnings)
+
+
+def test_clairaut_latex_yields_family_envelope_and_particular() -> None:
+    ecuacion = r"$$y = x\frac{dy}{dx} - \left(\frac{dy}{dx}\right)^2$$"
+    general = solve(ecuacion, timeout=20)
+    assert general.error is None
+    assert general.chosen_method == "clairaut"
+    assert general.general is not None
+    assert sp.simplify(general.general.expr - C * (X - C)) == 0
+    assert len(general.singular_solutions) == 1
+    assert sp.simplify(general.singular_solutions[0].expr - X**2 / 4) == 0
+
+    pvi = solve(
+        ecuacion,
+        x0=2.0,
+        y0=1.0,
+        x_min=-4.0,
+        x_max=4.0,
+        timeout=20,
+    )
+    assert pvi.error is None
+    assert pvi.particular is not None
+    assert sp.simplify(pvi.particular.expr - (X - 1)) == 0
+
+
+def test_singular_initial_point_does_not_hang() -> None:
+    ecuacion = r"$$(3xy + y^2)dx + (x^2 + xy)dy = 0$$"
+    resultado = solve(
+        ecuacion,
+        x0=0.0,
+        y0=1.0,
+        x_min=-5.0,
+        x_max=5.0,
+        timeout=10,
+    )
+    assert resultado.error is None
+    assert resultado.general is not None
+    assert resultado.numeric is not None and not resultado.numeric.success
+    assert any(
+        "derivada" in aviso and "inicial" in aviso
+        for aviso in resultado.warnings
+    )
 
 
 def test_failed_methods_fall_back_to_dsolve(monkeypatch: pytest.MonkeyPatch) -> None:

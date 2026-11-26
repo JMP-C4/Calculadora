@@ -100,6 +100,16 @@ def test_latex_fraction_is_accepted():
     assert sp.simplify(result.rhs - x**2 / y) == 0
 
 
+def test_dangerous_builtins_are_rejected():
+    for payload in (
+        "dy/dx = __import__('os').system('echo')",
+        "dy/dx = open('secret.txt')",
+    ):
+        result = parse_ode(payload)
+        assert result.rhs is None
+        assert result.error is not None
+
+
 def test_latex_functions_and_powers_are_accepted():
     result = parse_ode(r"$\frac{dy}{dx} = \sqrt{x} + \sin(x) + x^{2}$")
 

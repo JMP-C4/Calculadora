@@ -19,6 +19,9 @@ from core.tipos import InfoExistencia
 
 
 def _a_float(valor: object) -> float | None:
+    if isinstance(valor, (int, float, np.number)) and not isinstance(valor, bool):
+        numero_real = float(valor)
+        return numero_real if math.isfinite(numero_real) else None
     try:
         numero = complex(sp.N(valor))  # type: ignore[arg-type]
     except Exception:
@@ -31,7 +34,11 @@ def _a_float(valor: object) -> float | None:
 
 
 def _evaluar(expr: sp.Expr, x: float, y: float) -> float | None:
-    return _a_float(expr.subs({X: x, Y: y}))
+    try:
+        valor = expr.evalf(15, subs={X: float(x), Y: float(y)})
+    except Exception:
+        return None
+    return _a_float(valor)
 
 
 def _continua_en_entorno(
@@ -79,36 +86,47 @@ def _puntos_singulares(rhs: sp.Expr) -> tuple[list[str], list[str]]:
                 "f(x,y) contiene denominadores; puede haber singularidades "
                 "donde éstos se anulan."
             )
+    tiene_log = False
+    tiene_raiz = False
     for atomo in sp.preorder_traversal(rhs):
         if isinstance(atomo, sp.log):
-            notas.append(
-                "El logaritmo restringe el dominio al argumento estrictamente "
-                "positivo."
-            )
-            break
-        if isinstance(atomo, sp.Pow) and atomo.exp == sp.Rational(1, 2):
-            notas.append(
-                "La raíz cuadrada restringe el dominio al radicando no negativo."
-            )
-            break
+            tiene_log = True
+        elif isinstance(atomo, sp.Pow) and isinstance(atomo.exp, sp.Rational):
+            if atomo.exp.q % 2 == 0 and atomo.exp.p > 0:
+                tiene_raiz = True
+    if tiene_log:
+        notas.append(
+            "El logaritmo restringe el dominio al argumento estrictamente positivo."
+        )
+    if tiene_raiz:
+        notas.append(
+            "La raíz cuadrada restringe el dominio al radicando no negativo."
+        )
     return puntos, notas
 
 
-def _tiene_potencia_fraccionaria(rhs: sp.Expr, y0: float) -> bool:
+def _tiene_potencia_fraccionaria(
+    rhs: sp.Expr, y0: float, x0: float | None = None
+) -> bool:
     """Detecta ``(y-y0)^α`` con 0 < α < 1, fuente típica de no unicidad."""
 
+    punto = {Y: float(y0)} if x0 is None else {X: float(x0), Y: float(y0)}
     for atomo in sp.preorder_traversal(rhs):
         if not isinstance(atomo, sp.Pow):
             continue
         base, exponente = atomo.args
-        if exponente.is_number:
-            valor = float(sp.N(exponente))
-            if 0.0 < valor < 1.0:
-                try:
-                    if sp.simplify(base.subs(Y, y0)) == 0:
-                        return True
-                except Exception:
-                    continue
+        valor = _a_float(exponente)
+        if valor is None or not (0.0 < valor < 1.0):
+            continue
+        try:
+            evaluado = _a_float(base.evalf(15, subs=punto))
+            if evaluado is not None:
+                if abs(evaluado) < 1e-12:
+                    return True
+            elif sp.simplify(base.subs(punto)) == 0:
+                return True
+        except Exception:
+            continue
     return False
 
 
@@ -119,56 +137,62 @@ def estimar_explosion(
 ) -> tuple[bool, float | None, str | None]:
     """Estima el tiempo de explosión para una EDO autónoma.
 
-    Para ``y' = f(y)`` la solución explota cuando diverge la integral
-    ``∫ dy/f(y)``.  Si la integral converge, el tiempo se suma a ``x0``.
+    Para ``y' = f(y)`` la solución explota cuando converge la integral
+    ``∫ dy/f(y)`` hacia ``+∞`` o ``-∞`` en el sentido del flujo.
     """
 
-    try:
-        f_y = sp.simplify(rhs.subs(X, x0))
-    except Exception:
-        return False, None, None
-    if f_y.has(X):
+    if rhs.has(X):
         return False, None, None
 
+    f_y = rhs
     valor = _evaluar(f_y, x0, y0)
     if valor is None or abs(valor) < 1e-14:
         return False, None, None
 
-    # La solución escapa hacia +∞ si y0 > 0 y hacia -∞ si y0 < 0.  El signo
-    # de la integral decide si el escape ocurre hacia delante o hacia atrás.
-    limite = sp.oo if y0 > 0 else -sp.oo
-
-    # Si f(y) se anula entre y0 y el límite, la integral impropia diverge y
-    # la solución se acerca asintóticamente al equilibrio en lugar de explotar.
+    # Si f(y) se anula entre y0 y el límite, la solución se acerca
+    # asintóticamente al equilibrio en lugar de explotar en esa dirección.
     try:
         raices = sp.solve(sp.Eq(f_y, 0), Y)
     except Exception:
         raices = []
-    for raiz in raices:
-        raiz_valor = _a_float(raiz)
-        if raiz_valor is None:
-            continue
-        if min(y0, float(limite)) < raiz_valor < max(y0, float(limite)):
-            return False, None, None
+    raices_reales = [r for r in (_a_float(raiz) for raiz in raices) if r is not None]
 
     try:
         primitiva = sp.integrate(1 / f_y, Y)
-        valor_limite = sp.limit(primitiva, Y, limite)
-        integral = sp.simplify(valor_limite - primitiva.subs(Y, y0))
     except Exception:
         return False, None, None
-    if integral.has(sp.Integral, sp.oo, -sp.oo, sp.zoo, sp.nan, sp.AccumBounds):
+    if primitiva.has(sp.Integral):
         return False, None, None
-    tiempo_integral = _a_float(integral)
-    if tiempo_integral is None or not math.isfinite(tiempo_integral):
-        return False, None, None
-    if abs(tiempo_integral) < 1e-12:
-        return False, None, None
-    tiempo = x0 + tiempo_integral
-    if not math.isfinite(tiempo):
-        return False, None, None
-    direccion = "hacia adelante" if tiempo > x0 else "hacia atrás"
-    return True, float(tiempo), direccion
+
+    direcciones = (
+        ("hacia adelante", sp.oo if valor > 0 else -sp.oo, 1.0),
+        ("hacia atrás", -sp.oo if valor > 0 else sp.oo, -1.0),
+    )
+    for direccion, limite, signo_esperado in direcciones:
+        if any(
+            (r > y0 if limite is sp.oo else r < y0)
+            for r in raices_reales
+        ):
+            continue
+        try:
+            valor_limite = sp.limit(primitiva, Y, limite)
+            integral = valor_limite - primitiva.subs(Y, y0)
+        except Exception:
+            continue
+        if integral.has(sp.Integral, sp.oo, -sp.oo, sp.zoo, sp.nan, sp.AccumBounds):
+            continue
+        tiempo_integral = _a_float(integral)
+        if tiempo_integral is None:
+            tiempo_integral = _a_float(sp.simplify(integral))
+        if tiempo_integral is None or not math.isfinite(tiempo_integral):
+            continue
+        if tiempo_integral * signo_esperado <= 1e-12:
+            continue
+        tiempo = float(x0) + tiempo_integral
+        if math.isfinite(tiempo):
+            return True, float(tiempo), direccion
+
+    return False, None, None
 
 
 def analizar_existencia(
@@ -213,7 +237,7 @@ def analizar_existencia(
             )
         else:
             lipschitz = True
-            if _tiene_potencia_fraccionaria(rhs, y0):
+            if _tiene_potencia_fraccionaria(rhs, y0, x0):
                 lipschitz = False
                 no_unicidad = True
                 motivo = (

@@ -107,13 +107,13 @@ def _archivo_preferencia() -> Path:
     return base / "odecalc" / "notacion.txt"
 
 
-def leer_preferencia() -> str:
+def leer_preferencia(*, default: str | None = None) -> str:
     """Preferencia guardada en disco para interfaces de escritorio."""
 
     try:
         return normalizar(_archivo_preferencia().read_text(encoding="utf-8").strip())
     except (OSError, UnicodeError):
-        return NATURAL
+        return normalizar(default) if default is not None else NATURAL
 
 
 def guardar_preferencia(notacion: str) -> str:
@@ -139,27 +139,309 @@ def _limpiar_parrafos(texto: str) -> str:
     return "\n".join(linea.rstrip() for linea in str(texto).splitlines()).strip()
 
 
+_GRIEGAS_UNICODE = {
+    "μ": r"\mu",
+    "ν": r"\nu",
+    "π": r"\pi",
+    "α": r"\alpha",
+    "β": r"\beta",
+    "γ": r"\gamma",
+    "δ": r"\delta",
+    "θ": r"\theta",
+    "λ": r"\lambda",
+    "φ": r"\varphi",
+    "ψ": r"\psi",
+}
+_SUBINDICES_UNICODE = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
+
+
+def _leer_bloque(texto: str, inicio: int, abrir: str, cerrar: str) -> tuple[str, int] | None:
+    """Extrae el contenido de un bloque ``{...}`` o ``(...)`` respetando anidación."""
+
+    if inicio >= len(texto) or texto[inicio] != abrir:
+        return None
+    profundidad = 0
+    indice = inicio
+    while indice < len(texto):
+        caracter = texto[indice]
+        if caracter == "\\" and abrir == "{":
+            indice += 2
+            continue
+        if caracter == abrir:
+            profundidad += 1
+        elif caracter == cerrar:
+            profundidad -= 1
+            if profundidad == 0:
+                return texto[inicio + 1 : indice], indice + 1
+        indice += 1
+    return None
+
+
+def _reemplazar_funcion_parentesis(texto: str, nombre: str, plantilla: str) -> str:
+    """Reemplaza llamadas ``nombre(...)`` respetando paréntesis anidados."""
+
+    patron = re.compile(rf"\b{re.escape(nombre)}\s*\(")
+    resultado: list[str] = []
+    posicion = 0
+    while (encontrado := patron.search(texto, posicion)) is not None:
+        bloque = _leer_bloque(texto, encontrado.end() - 1, "(", ")")
+        if bloque is None:
+            break
+        contenido, fin = bloque
+        resultado.append(texto[posicion : encontrado.start()])
+        resultado.append(plantilla.format(contenido.strip()))
+        posicion = fin
+    resultado.append(texto[posicion:])
+    return "".join(resultado)
+
+
+def _necesita_parentesis_frac(texto: str) -> bool:
+    """Indica si un operando de ``a/b`` requiere paréntesis al aplanarse."""
+
+    valor = texto.strip()
+    if not valor or re.fullmatch(r"[A-Za-z0-9_^{}.]+", valor):
+        return False
+    if valor.startswith("(") and valor.endswith(")"):
+        bloque = _leer_bloque(valor, 0, "(", ")")
+        if bloque is not None and bloque[1] == len(valor):
+            return False
+    profundidad = 0
+    for idx, car in enumerate(valor):
+        if car in "({[":
+            profundidad += 1
+        elif car in ")}]":
+            profundidad = max(0, profundidad - 1)
+        elif profundidad == 0:
+            if idx > 0 and car in "+-*/":
+                return True
+            if car.isspace():
+                return True
+    return False
+
+
+def _simplificar_argumentos_latex(texto: str) -> str:
+    """Convierte agrupaciones SymPy ``f{\\left(x\\right)}`` en ``f(x)`` sin llaves extra."""
+
+    patron_fn = re.compile(
+        r"(?:\\(?:ln|log|exp|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|erf|erfi|Ci|Si|Ei|acot)|\\operatorname\{[^{}]+\})\s*\{"
+    )
+    resultado = texto
+    pos = 0
+    salida: list[str] = []
+    while (encontrado := patron_fn.search(resultado, pos)) is not None:
+        llave_idx = encontrado.end() - 1
+        bloque = _leer_bloque(resultado, llave_idx, "{", "}")
+        if bloque is None:
+            break
+        contenido, fin = bloque
+        salida.append(resultado[pos:llave_idx])
+        c_strip = contenido.strip()
+        if c_strip.startswith(r"\left(") and c_strip.endswith(r"\right)"):
+            salida.append("(" + c_strip[6:-7].strip() + ")")
+        else:
+            salida.append(contenido if c_strip.startswith("(") else "{" + contenido + "}")
+        pos = fin
+    salida.append(resultado[pos:])
+    limpio = "".join(salida)
+    limpio = re.sub(r"\\left([|(])", r"\1", limpio)
+    limpio = re.sub(r"\\right([|)])", r"\1", limpio)
+    limpio = re.sub(r"\\left(?![A-Za-z])", "", limpio)
+    limpio = re.sub(r"\\right(?![A-Za-z])", "", limpio)
+    return limpio
+
+
+def _aplanar_comandos_anidados(
+    texto: str,
+    *,
+    estilo: str,
+) -> str:
+    """Aplana ``\\frac``, ``\\dfrac``, ``\\tfrac``, ``\\sqrt`` y ``cases`` con anidación."""
+
+    def _transformar_cases(cuerpo: str) -> str:
+        filas = [f.strip() for f in re.split(r"\\\\", cuerpo) if f.strip()]
+        partes: list[str] = []
+        for fila in filas:
+            if "&" in fila:
+                expr, cond = (trozo.strip() for trozo in fila.split("&", 1))
+                cond = re.sub(r"\\text\{([^{}]*)\}(?:\\:|\s)*", r"\1 ", cond).strip()
+                cond = re.sub(r"^\bfor\b\s*", "si ", cond)
+                if cond == "otherwise":
+                    partes.append(f"{_aplanar(expr)} (en otro caso)")
+                else:
+                    partes.append(f"{_aplanar(expr)} ({_aplanar(cond)})")
+            else:
+                partes.append(_aplanar(fila))
+        return "{" + "; ".join(partes) + "}"
+
+    def _aplanar(valor: str) -> str:
+        out: list[str] = []
+        i = 0
+        while i < len(valor):
+            if valor.startswith(r"\begin{cases}", i):
+                fin = valor.find(r"\end{cases}", i)
+                if fin != -1:
+                    out.append(_transformar_cases(valor[i + 13 : fin]))
+                    i = fin + 11
+                    continue
+            for cmd in (r"\dfrac{", r"\tfrac{", r"\frac{"):
+                if valor.startswith(cmd, i):
+                    b1 = _leer_bloque(valor, i + len(cmd) - 1, "{", "}")
+                    if b1 is not None:
+                        sig = b1[1]
+                        while sig < len(valor) and valor[sig].isspace():
+                            sig += 1
+                        b2 = _leer_bloque(valor, sig, "{", "}")
+                        if b2 is not None:
+                            num = _aplanar(b1[0])
+                            den = _aplanar(b2[0])
+                            num_c = num.replace(" ", "")
+                            den_c = den.replace(" ", "")
+                            if estilo == "natural" and re.fullmatch(r"d\^?\d*[xy]", num_c) and re.fullmatch(r"d[xy]\^?\d*", den_c):
+                                out.append(f"{num_c}/{den_c}")
+                            elif estilo == "natural":
+                                n_txt = f"({num})" if _necesita_parentesis_frac(num) else num
+                                d_txt = f"({den})" if _necesita_parentesis_frac(den) else den
+                                out.append(f"{n_txt}/{d_txt}")
+                            else:
+                                out.append(f"({num})/({den})")
+                            i = b2[1]
+                            break
+            else:
+                if valor.startswith(r"\sqrt{", i):
+                    b1 = _leer_bloque(valor, i + 5, "{", "}")
+                    if b1 is not None:
+                        inner = _aplanar(b1[0])
+                        prefix = "√" if estilo == "natural" else "sqrt"
+                        out.append(f"{prefix}({inner})")
+                        i = b1[1]
+                        continue
+                out.append(valor[i])
+                i += 1
+                continue
+            continue
+        return "".join(out)
+
+    return _aplanar(texto)
+
+
+def adaptar_latex_mathtext(latex: str) -> str:
+    """Adapta expresiones LaTeX para evitar errores de sintaxis en Matplotlib ``mathtext``."""
+
+    if not latex:
+        return ""
+    valor = str(latex).strip()
+    if len(valor) >= 2 and valor.startswith("$") and valor.endswith("$"):
+        valor = valor[1:-1].strip()
+
+    def _convertir_cases(texto: str) -> str:
+        salida: list[str] = []
+        pos = 0
+        while (ini := texto.find(r"\begin{cases}", pos)) != -1:
+            fin = texto.find(r"\end{cases}", ini)
+            if fin == -1:
+                break
+            salida.append(texto[pos:ini])
+            cuerpo = texto[ini + 13 : fin]
+            filas = [f.strip() for f in re.split(r"\\\\", cuerpo) if f.strip()]
+            ramas: list[str] = []
+            for fila in filas:
+                if "&" in fila:
+                    expr_r, cond_r = (p.strip() for p in fila.split("&", 1))
+                    cond_r = re.sub(r"\\text\{for\}(?:\\:|\s)*", r"\\mathrm{si}\\ ", cond_r)
+                    cond_r = re.sub(r"\\text\{otherwise\}", r"\\mathrm{en\\ otro\\ caso}", cond_r)
+                    ramas.append(rf"{expr_r}\ ({cond_r})")
+                else:
+                    ramas.append(fila)
+            unido = r"\ ;\ ".join(ramas)
+            salida.append(rf"\left\{{\ {unido}\right.")
+            pos = fin + 11
+        salida.append(texto[pos:])
+        return "".join(salida)
+
+    valor = _convertir_cases(valor)
+    reemplazos = (
+        (r"\implies", r"\Longrightarrow"),
+        (r"\iff", r"\Leftrightarrow"),
+        (r"\tfrac", r"\frac"),
+        (r"\displaystyle", ""),
+        (r"\limits", ""),
+    )
+    for origen, destino in reemplazos:
+        valor = valor.replace(origen, destino)
+    valor = re.sub(r"\\text\{([^{}]*)\}", lambda m: r"\mathrm{" + m.group(1) + "}", valor)
+    reemplazos_unicode = (
+        ("−", "-"),
+        ("·", r"\cdot "),
+        ("×", r"\times "),
+        ("÷", r"\div "),
+        ("≤", r"\leq "),
+        ("≥", r"\geq "),
+        ("≠", r"\neq "),
+        ("±", r"\pm "),
+        ("∞", r"\infty "),
+        ("∂", r"\partial "),
+        ("∫", r"\int "),
+        ("→", r"\rightarrow "),
+        ("⇒", r"\Longrightarrow "),
+        ("′", "'"),
+        ("″", "''"),
+    )
+    for u_char, tex_cmd in reemplazos_unicode:
+        valor = valor.replace(u_char, tex_cmd)
+    for g_char, g_cmd in _GRIEGAS_UNICODE.items():
+        valor = valor.replace(g_char, g_cmd + " ")
+    valor = re.sub(r"([A-Za-z0-9])\s*([₀₁₂₃₄₅₆₇₈₉]+)", lambda m: f"{m.group(1)}_{{{m.group(2).translate(_SUBINDICES_UNICODE)}}}", valor)
+    valor = valor.replace("$", "")
+    return _limpiar(valor)
+
+
 def _codigo_a_latex(texto: str, *, funciones: bool = True) -> str:
     """Convierte notación de entrada o código matemático en LaTeX renderizable.
 
     Así ninguna vista tiene que mostrar ``*``, ``**`` o ``sqrt()``: todo pasa
-    primero por una representación apta para KaTeX. Los textos que ya contienen
-    comandos LaTeX se devuelven intactos. Con ``funciones=False`` se conservan
-    las funciones escritas como texto, tal como espera la notación infija.
+    primero por una representación apta para KaTeX y ``mathtext``. Los textos
+    que ya contienen comandos LaTeX se devuelven intactos. Con ``funciones=False``
+    se conservan las funciones escritas como texto, tal como espera la notación infija.
     """
 
     valor = _limpiar(str(texto))
     if not valor or "\\" in valor:
         return valor
+    for g_char, g_cmd in _GRIEGAS_UNICODE.items():
+        if funciones:
+            valor = valor.replace(g_char, g_cmd)
+    valor = (
+        valor.replace("−", "-")
+        .replace("′", "'")
+        .replace("″", "''")
+        .replace("·", "*")
+        .replace("≤", r"\leq " if funciones else "<=")
+        .replace("≥", r"\geq " if funciones else ">=")
+        .replace("≠", r"\neq " if funciones else "!=")
+    )
+    if funciones:
+        valor = valor.replace("±", r"\pm ")
+        valor = re.sub(r"∂\s*([A-Za-z])\s*/\s*∂\s*([A-Za-z])", r"\\frac{\\partial \1}{\\partial \2}", valor)
+    valor = re.sub(
+        r"([A-Za-z])([₀₁₂₃₄₅₆₇₈₉]+)",
+        lambda m: f"{m.group(1)}_{m.group(2).translate(_SUBINDICES_UNICODE)}",
+        valor,
+    )
+    if funciones:
+        valor = re.sub(r"\bDy\b", "y'", valor)
     valor = re.sub(r"\bdy\s*/\s*dx\b", r"\\frac{dy}{dx}", valor)
+    valor = re.sub(r"\*\*\(([^()]+)\)", r"^{\1}", valor)
     valor = valor.replace("**", "^")
     if funciones:
-        valor = re.sub(r"\bsqrt\s*\(\s*([^()]*?)\s*\)", r"\\sqrt{\1}", valor)
-        valor = re.sub(r"\bexp\s*\(\s*([^()]*?)\s*\)", r"e^{\1}", valor)
-        for nombre in ("ln", "log", "sin", "cos", "tan", "asin", "acos", "atan"):
+        valor = _reemplazar_funcion_parentesis(valor, "sqrt", r"\sqrt{{{}}}")
+        valor = _reemplazar_funcion_parentesis(valor, "exp", r"e^{{{}}}")
+        valor = _reemplazar_funcion_parentesis(valor, "Abs", r"\left|{{{}}}\right|")
+        for nombre in ("ln", "log", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh"):
             valor = re.sub(rf"\b{nombre}\s*\(", r"\\" + nombre + "(", valor)
+        for esp in ("erf", "erfi", "Ci", "Si", "Ei", "acot"):
+            valor = re.sub(rf"\b{esp}\s*\(", rf"\\operatorname{{{esp}}}(", valor)
         valor = re.sub(r"\bpi\b", r"\\pi", valor)
-        valor = re.sub(r"\boo\b", r"\\infty", valor)
+        valor = re.sub(r"\boo\b|∞", r"\\infty", valor)
     valor = re.sub(r"\b([A-Za-z])([0-9])\b", r"\1_\2", valor)
     punto = r"\cdot " if funciones else r"\cdot"
     # ``y^*`` es un comodín matemático, no un producto: no debe volverse ``y^\cdot``.
@@ -186,15 +468,21 @@ def latex_a_infijo(texto: str) -> str:
     if not texto:
         return ""
     convertido = _codigo_a_latex(texto, funciones=False)
+    convertido = _simplificar_argumentos_latex(convertido)
+    convertido = _aplanar_comandos_anidados(convertido, estilo="infijo")
     reemplazos = (
+        (r"\\Longrightarrow", " => "),
+        (r"\\Rightarrow", " => "),
+        (r"\\Leftrightarrow", " <=> "),
         (r"\\rightarrow", " -> "),
         (r"\\qquad", "  "),
         (r"\\quad", "  "),
         (r"\\to", " -> "),
-        (r"\\left", ""),
-        (r"\\right", ""),
         (r"\\infty", "∞"),
         (r"\\partial", "∂"),
+        (r"\\leq", "<="),
+        (r"\\geq", ">="),
+        (r"\\neq", "!="),
         (r"\\mathrm\{e\}", "e"),
         (r"\\mathrm\{([^{}]*)\}", r"\1"),
         (r"\\operatorname\{([^{}]*)\}", r"\1"),
@@ -205,9 +493,9 @@ def latex_a_infijo(texto: str) -> str:
         (r"\\sin", "sin"),
         (r"\\cos", "cos"),
         (r"\\tan", "tan"),
-        (r"\\sqrt\{([^{}]*)\}", r"sqrt(\1)"),
-        (r"\\frac\{([^{}]*)\}\{([^{}]*)\}", r"(\1)/(\2)"),
-        (r"\\dfrac\{([^{}]*)\}\{([^{}]*)\}", r"(\1)/(\2)"),
+        (r"\\asin", "asin"),
+        (r"\\acos", "acos"),
+        (r"\\atan", "atan"),
         (r"\\cdot\s*", "*"),
         (r"\\times\s*", "*"),
         (r"_([0-9])", r"\1"),
@@ -219,12 +507,6 @@ def latex_a_infijo(texto: str) -> str:
         (r"\$", ""),
     )
     for patron, sustitucion in reemplazos:
-        convertido = re.sub(patron, sustitucion, convertido)
-    # Segunda pasada para fracciones y raíces anidadas.
-    for patron in (r"\\frac\{([^{}]*)\}\{([^{}]*)\}", r"\\sqrt\{([^{}]*)\}"):
-        sustitucion = (
-            r"(\1)/(\2)" if patron.startswith(r"\\frac") else r"sqrt(\1)"
-        )
         convertido = re.sub(patron, sustitucion, convertido)
     convertido = convertido.replace("{", "").replace("}", "")
     convertido = convertido.replace("**", "^").replace("\\", "")
@@ -242,26 +524,24 @@ def latex_a_natural(texto: str) -> str:
     if not texto:
         return ""
     convertido = _codigo_a_latex(texto)
-    # Derivadas primero: ``\frac{dy}{dx}`` debe leerse ``dy/dx``, no ``(dy)/(dx)``.
-    derivadas = (
-        (r"\\(?:dfrac|tfrac|frac)\{\s*d\s*y\s*\}\{\s*d\s*x\s*\}", "dy/dx"),
-        (r"\\(?:dfrac|tfrac|frac)\{\s*d\s*([A-Za-z])\s*\}\{\s*d\s*([A-Za-z])\s*\}", r"d\1/d\2"),
-    )
-    for patron, sustitucion in derivadas:
-        convertido = re.sub(patron, sustitucion, convertido)
+    convertido = _simplificar_argumentos_latex(convertido)
+    convertido = re.sub(r"\^\{([A-Za-z0-9])\}", r"^\1", convertido)
+    convertido = _aplanar_comandos_anidados(convertido, estilo="natural")
     reemplazos = (
-        (r"\\(?:dfrac|tfrac|frac)\{([^{}]*)\}\{([^{}]*)\}", r"\1/\2"),
-        (r"\\sqrt\{([^{}]*)\}", r"√(\1)"),
-        (r"\\left", ""),
-        (r"\\right", ""),
         (r"\\mathrm\{([^{}]*)\}", r"\1"),
         (r"\\operatorname\{([^{}]*)\}", r"\1"),
         (r"\\text\{([^{}]*)\}", r"\1"),
-        (r"\\rightarrow", "→"),
+        (r"\\Longrightarrow", "⇒"),
         (r"\\Rightarrow", "⇒"),
+        (r"\\Leftrightarrow", "⇔"),
+        (r"\\rightarrow", "→"),
         (r"\\to", "→"),
         (r"\\infty", "∞"),
         (r"\\partial", "∂"),
+        (r"\\leq", "≤"),
+        (r"\\geq", "≥"),
+        (r"\\neq", "≠"),
+        (r"\\pm", "±"),
         (r"\\mu", "μ"),
         (r"\\nu", "ν"),
         (r"\\pi", "π"),
@@ -271,6 +551,8 @@ def latex_a_natural(texto: str) -> str:
         (r"\\delta", "δ"),
         (r"\\theta", "θ"),
         (r"\\lambda", "λ"),
+        (r"\\varphi", "φ"),
+        (r"\\psi", "ψ"),
         (r"\\cdot", "·"),
         (r"\\times", "×"),
         (r"\\int", "∫"),
@@ -282,6 +564,9 @@ def latex_a_natural(texto: str) -> str:
         (r"\\sin", "sin"),
         (r"\\cos", "cos"),
         (r"\\tan", "tan"),
+        (r"\\asin", "asin"),
+        (r"\\acos", "acos"),
+        (r"\\atan", "atan"),
         (r"\\qquad", "  "),
         (r"\\quad", "  "),
         (r"\\,", " "),
@@ -291,12 +576,6 @@ def latex_a_natural(texto: str) -> str:
         (r"\$", ""),
     )
     for patron, sustitucion in reemplazos:
-        convertido = re.sub(patron, sustitucion, convertido)
-    # Segunda pasada para fracciones y raíces anidadas.
-    for patron, sustitucion in (
-        (r"\\(?:dfrac|tfrac|frac)\{([^{}]*)\}\{([^{}]*)\}", r"\1/\2"),
-        (r"\\sqrt\{([^{}]*)\}", r"√(\1)"),
-    ):
         convertido = re.sub(patron, sustitucion, convertido)
     convertido = re.sub(r"([A-Za-z])''", r"\1″", convertido)
     convertido = re.sub(r"([A-Za-z])'", r"\1′", convertido)
@@ -349,8 +628,57 @@ def _normalizar_delimitadores(texto: str) -> str:
     return _DELIMITADOS.sub(reemplazar, texto)
 
 
+def _inicio_fragmento(texto: str, inicio_cmd: int) -> int:
+    """Retrocede desde un comando LaTeX para no partir prefijos como ``y = v^{``."""
+
+    indice = inicio_cmd
+    profundidad_llave = 0
+    profundidad_par = 0
+    while indice > 0:
+        car = texto[indice - 1]
+        if car == "}":
+            profundidad_llave += 1
+        elif car == "{":
+            if profundidad_llave:
+                profundidad_llave -= 1
+            else:
+                indice -= 1
+                continue
+        elif car == ")":
+            profundidad_par += 1
+        elif car == "(":
+            if profundidad_par:
+                profundidad_par -= 1
+            else:
+                break
+        elif profundidad_llave == 0 and profundidad_par == 0:
+            if car in "$\n":
+                break
+            if car in ".;:," and (indice >= len(texto) or not texto[indice].isdigit()):
+                break
+            if car.isspace():
+                pos = indice - 1
+                while pos > 0 and texto[pos - 1].isspace():
+                    pos -= 1
+                palabra_m = re.search(r"([A-Za-zÁÉÍÓÚáéíóúñÑ]+)$", texto[:pos])
+                if palabra_m:
+                    palabra = palabra_m.group(1)
+                    siguiente = texto[indice:].lstrip()
+                    es_lhs_ecuacion = siguiente.startswith("=")
+                    if palabra.lower() in _PROSA_STOP and not (
+                        palabra.lower() == "y" and es_lhs_ecuacion
+                    ):
+                        break
+                    if len(palabra) >= 3 and palabra.lower() not in _TOKENS_MATEMATICOS:
+                        break
+        indice -= 1
+    while indice < inicio_cmd and texto[indice].isspace():
+        indice += 1
+    return indice
+
+
 def _fin_fragmento(texto: str, inicio: int) -> int:
-    """Extiende un comando LaTeX hasta un separador razonable de prosa."""
+    """Extiende un comando LaTeX respetando llaves y paréntesis balanceados."""
 
     profundidad = 0
     indice = inicio
@@ -378,16 +706,16 @@ def _dentro_de_matematicas(texto: str, posicion: int) -> bool:
 
 
 def _envolver_comandos(texto: str) -> str:
-    """Marca comandos LaTeX sueltos para que la UI los renderice como fórmula."""
+    """Marca comandos LaTeX sueltos con su expresión completa para la UI."""
 
     resultado: list[str] = []
     ultimo = 0
     cursor = 0
     while (encontrado := _COMANDO.search(texto, cursor)) is not None:
         cursor = encontrado.end()
-        inicio = encontrado.start()
-        if inicio < ultimo or _dentro_de_matematicas(texto, inicio):
+        if encontrado.start() < ultimo or _dentro_de_matematicas(texto, encontrado.start()):
             continue
+        inicio = max(ultimo, _inicio_fragmento(texto, encontrado.start()))
         fin = _fin_fragmento(texto, inicio)
         if fin <= encontrado.end():
             continue
@@ -442,12 +770,81 @@ _PROSA_STOP = frozenset(
         "llega", "permite", "explica", "representa",
     }
 )
+_PROSA_CONJUNCIONES = frozenset({"y", "o", "u", "e", "a"})
 _FUNCION_LLAMADA = re.compile(
-    r"\b(?:sqrt|exp|ln|log|sin|cos|tan|asin|acos|atan)\s*\([^()]*\)"
+    r"\b(?:sqrt|exp|ln|log|sin|cos|tan|asin|acos|atan|Abs|erf|erfi|Ci|Si|Ei|acot)\s*\([^()]*\)"
+)
+_INTERVALO_PROSA = re.compile(
+    r"(?:(?<=\s)|^)[\[(]\s*[^()\[\]\n]*?(?:∞|-∞|\boo\b)[^()\[\]\n]*?,\s*[^()\[\]\n]+?[\])]"
 )
 _INICIO_ECUACION = re.compile(
-    r"(?<![\w$])(dy\s*/\s*dx|y\s*'\s*(?:\(\s*x\s*\))?|[A-Za-z_]\w*(?:\([^()]*\))?)\s*="
+    r"(?<![\w$])("
+    r"∂\s*[A-Za-z]\s*/\s*∂\s*[A-Za-z]"
+    r"|dy\s*/\s*dx"
+    r"|y\s*'{1,2}\s*(?:\(\s*x\s*\))?"
+    r"|[A-Za-zμνπαβγδθλφψ_][A-Za-z0-9_₀₁₂₃₄₅₆₇₈₉']*(?:\([^()]*\))?"
+    r")\s*="
 )
+
+
+def _inicio_expresion_en_prosa(texto: str, pos_match: int) -> int:
+    """Extiende hacia la izquierda si la ecuación tiene varios términos, ej. ``y' + P(x)y =``."""
+
+    indice = pos_match
+    profundidad_par = 0
+    vio_operador = False
+    while indice > 0:
+        car = texto[indice - 1]
+        if car == ")":
+            profundidad_par += 1
+        elif car == "(":
+            if profundidad_par:
+                profundidad_par -= 1
+            else:
+                break
+        elif profundidad_par == 0:
+            if car in "\n.;:$":
+                break
+            if car in "+-*/^·−":
+                vio_operador = True
+            elif car.isspace():
+                pos = indice - 1
+                while pos > 0 and texto[pos - 1].isspace():
+                    pos -= 1
+                palabra_m = re.search(r"([A-Za-zÁÉÍÓÚáéíóúñÑ]+)$", texto[:pos])
+                if palabra_m:
+                    palabra = palabra_m.group(1)
+                    if palabra.lower() in _PROSA_STOP:
+                        break
+                    if len(palabra) >= 3 and palabra.lower() not in _TOKENS_MATEMATICOS:
+                        break
+        indice -= 1
+    while indice < pos_match and texto[indice].isspace():
+        indice += 1
+    return indice if vio_operador else pos_match
+
+
+def _es_stopword_en_contexto(texto: str, inicio_palabra: int, palabra: str) -> bool:
+    lower = palabra.lower()
+    if lower not in _PROSA_STOP:
+        return False
+    if lower not in _PROSA_CONJUNCIONES:
+        return True
+    resto = texto[inicio_palabra + len(palabra) :].lstrip()
+    if not resto or resto[0] in ".;:,\n)$":
+        prev_no_space = texto[:inicio_palabra].rstrip()
+        if lower == "y" and prev_no_space and prev_no_space[-1].isalpha():
+            return False
+    if re.match(r"^[A-Za-zμνπαβγδθλφψ_][A-Za-z0-9_']*\s*=", resto):
+        return True
+    siguiente = re.match(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]+", resto)
+    if siguiente is not None:
+        sig_palabra = siguiente.group(0)
+        if sig_palabra.lower() in _PROSA_STOP or (
+            len(sig_palabra) >= 2 and sig_palabra.lower() not in _TOKENS_MATEMATICOS
+        ):
+            return True
+    return False
 
 
 def _fin_expresion(texto: str, inicio: int) -> int:
@@ -476,7 +873,7 @@ def _fin_expresion(texto: str, inicio: int) -> int:
                 while siguiente < len(texto) and texto[siguiente].isspace():
                     siguiente += 1
                 palabra = re.match(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]+", texto[siguiente:])
-                if palabra and palabra.group(0).lower() in _PROSA_STOP:
+                if palabra and _es_stopword_en_contexto(texto, siguiente, palabra.group(0)):
                     break
                 if siguiente < len(texto) and texto[siguiente] == "$":
                     break
@@ -486,45 +883,61 @@ def _fin_expresion(texto: str, inicio: int) -> int:
     return max(indice, inicio)
 
 
-def _envolver_en_prosa(texto: str) -> str:
-    """Delimita las fórmulas escritas en prosa sin necesidad de ``$``."""
+def _envolver_solo_prosa(texto: str, *, latexify: bool = True) -> str:
+    """Detecta fórmulas sueltas en un segmento libre de ``$`` y comandos LaTeX."""
 
-    # Si el texto ya trae delimitadores o comandos, la lógica existente se
-    # encarga de él; envolverlo de nuevo alteraría fragmentos ya marcados.
-    if "$" in texto or "\\" in texto:
+    if not texto or "\\" in texto:
         return texto
     resultado: list[str] = []
     ultimo = 0
     for encontrado in _INICIO_ECUACION.finditer(texto):
-        inicio = encontrado.start()
-        if inicio < ultimo or _dentro_de_matematicas(texto, inicio):
+        if encontrado.start() < ultimo:
             continue
+        inicio = max(ultimo, _inicio_expresion_en_prosa(texto, encontrado.start()))
         fin = _fin_expresion(texto, inicio)
         if fin <= encontrado.end():
             continue
         fragmento = texto[inicio:fin].strip()
-        marcas = ("+", "-", "*", "/", "^", "(", ")", "·", "√")
+        marcas = ("+", "-", "−", "*", "/", "^", "(", ")", "·", "√")
         if not any(marca in fragmento for marca in marcas) and not any(
             caracter.isdigit() for caracter in fragmento
         ):
             continue
+        envuelto = _codigo_a_latex(fragmento) if latexify else fragmento
         resultado.append(texto[ultimo:inicio])
-        resultado.append(f"${fragmento}$")
+        resultado.append(f"${envuelto}$")
         ultimo = fin
     resultado.append(texto[ultimo:])
     preparado = "".join(resultado)
 
-    resultado = []
-    ultimo = 0
-    for encontrado in _FUNCION_LLAMADA.finditer(preparado):
-        inicio = encontrado.start()
-        if inicio < ultimo or _dentro_de_matematicas(preparado, inicio):
-            continue
-        resultado.append(preparado[ultimo:inicio])
-        resultado.append(f"${encontrado.group(0)}$")
-        ultimo = encontrado.end()
-    resultado.append(preparado[ultimo:])
-    return "".join(resultado)
+    for patron in (_FUNCION_LLAMADA, _INTERVALO_PROSA):
+        resultado = []
+        ultimo = 0
+        for encontrado in patron.finditer(preparado):
+            inicio = encontrado.start()
+            if inicio < ultimo or _dentro_de_matematicas(preparado, inicio):
+                continue
+            fragmento = encontrado.group(0).strip()
+            envuelto = _codigo_a_latex(fragmento) if latexify else fragmento
+            resultado.append(preparado[ultimo:inicio])
+            resultado.append(f"${envuelto}$")
+            ultimo = encontrado.end()
+        resultado.append(preparado[ultimo:])
+        preparado = "".join(resultado)
+    return preparado
+
+
+def _envolver_en_prosa(texto: str, *, latexify: bool = True) -> str:
+    """Delimita las fórmulas escritas en prosa respetando los fragmentos ya delimitados."""
+
+    partes: list[str] = []
+    posicion = 0
+    for encontrado in _MATEO_EN_LINEA.finditer(texto):
+        partes.append(_envolver_solo_prosa(texto[posicion : encontrado.start()], latexify=latexify))
+        partes.append(encontrado.group(0))
+        posicion = encontrado.end()
+    partes.append(_envolver_solo_prosa(texto[posicion:], latexify=latexify))
+    return "".join(partes)
 
 
 def formatear_texto(texto: object, notacion: str, *, markdown: bool = True) -> str:
@@ -538,21 +951,24 @@ def formatear_texto(texto: object, notacion: str, *, markdown: bool = True) -> s
 
     if texto is None:
         return ""
-    valor = _envolver_en_prosa(str(texto))
-    if not valor.strip():
+    raw = str(texto)
+    if not raw.strip():
         return ""
     modo = normalizar(notacion)
     if modo == "Infija":
+        valor = _envolver_en_prosa(raw, latexify=False)
         if _DELIMITADOS.search(valor) or _COMANDO.search(valor) or _parece_formula(valor):
             return latex_a_infijo(valor)
         return _limpiar_parrafos(valor)
 
-    if _DELIMITADOS.search(valor) or _COMANDO.search(valor):
-        preparado = _envolver_comandos(_normalizar_delimitadores(valor))
-    elif _parece_formula(valor):
-        preparado = f"${_codigo_a_latex(valor.strip())}$"
+    if _DELIMITADOS.search(raw) or _COMANDO.search(raw):
+        con_comandos = _envolver_comandos(_normalizar_delimitadores(raw))
+        preparado = _envolver_en_prosa(con_comandos, latexify=True)
+    elif _parece_formula(raw):
+        preparado = f"${_codigo_a_latex(raw.strip())}$"
     else:
-        preparado = _limpiar_parrafos(valor)
+        valor = _envolver_en_prosa(raw, latexify=True)
+        preparado = _limpiar_parrafos(valor) if not _DELIMITADOS.search(valor) else valor
     if modo == NATURAL:
         # La prosa se respeta; sólo se naturalizan las derivadas sueltas y los
         # fragmentos matemáticos delimitados.
@@ -565,6 +981,9 @@ def formatear_texto(texto: object, notacion: str, *, markdown: bool = True) -> s
         partes.append(_naturalizar_prosa(preparado[posicion:]))
         preparado = "".join(partes)
     return preparado if markdown else preparado
+
+
+codigo_a_latex = _codigo_a_latex
 
 
 def fragmentos(texto: str, notacion: str = NATURAL) -> list[tuple[str, bool]]:
@@ -589,6 +1008,8 @@ __all__ = [
     "CLAVE_NOTACION",
     "NATURAL",
     "NOTACIONES",
+    "adaptar_latex_mathtext",
+    "codigo_a_latex",
     "formatear",
     "formatear_texto",
     "fragmentos",

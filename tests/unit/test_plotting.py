@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import sympy as sp
 
 from odecalc.api import solve
@@ -13,7 +14,9 @@ from odecalc.plotting import (
     family_curves,
     isoclines,
     phase_line,
+    singular_curves,
     solution_curve,
+    tangency_points,
 )
 from odecalc.symbols import C, X, Y
 
@@ -113,6 +116,31 @@ def test_family_curves_rejects_more_than_one_constant() -> None:
 
 def test_family_curves_skips_unusable_expression() -> None:
     assert family_curves(sp.Function("f")(X)) == []
+
+
+def test_singular_curves_and_tangency_point_of_clairaut() -> None:
+    resultado = SolveResult(
+        input_text=r"$$y = x\frac{dy}{dx} - \left(\frac{dy}{dx}\right)^2$$",
+        general=Solution(form="explicit", expr=C * (X - C), constant=C),
+        particular=Solution(form="explicit", expr=X - 1),
+        singular_solutions=[Solution(form="explicit", expr=X**2 / 4)],
+    )
+    curvas = singular_curves(resultado, x_min=-4, x_max=4, n_points=50)
+    assert len(curvas) == 1
+    assert curvas[0]["label"] == "Envolvente singular"
+    assert curvas[0]["x"].shape == curvas[0]["y"].shape == (50,)
+    assert np.allclose(curvas[0]["y"], curvas[0]["x"] ** 2 / 4)
+
+    puntos = tangency_points(resultado, x_min=-4, x_max=4)
+    assert len(puntos) == 1
+    assert puntos[0]["x"] == pytest.approx(2.0)
+    assert puntos[0]["y"] == pytest.approx(1.0)
+
+
+def test_singular_helpers_ignore_results_without_singular_solution() -> None:
+    resultado = SolveResult(input_text="y' = y")
+    assert singular_curves(resultado) == []
+    assert tangency_points(resultado) == []
 
 
 def test_isoclines_skip_non_real_branches() -> None:

@@ -6,11 +6,12 @@ import sympy as sp
 
 from odecalc.methods.common import (
     explicit_solution,
+    latex_with_prime,
     make_step,
     safe_simplify,
 )
 from odecalc.models import Match, Solution, Step
-from odecalc.symbols import C, DY, X, Y
+from odecalc.symbols import C, DY, P, X, Y
 
 
 def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
@@ -27,22 +28,22 @@ def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
         make_step(
             1,
             "Identificar la ecuación de Clairaut",
-            sp.latex(sp.Eq(Y, X * DY + psi)),
-            "Tiene la forma y = x y' + f(y'), con f(p) = " + sp.latex(psi) + ".",
+            latex_with_prime(sp.Eq(Y, X * DY + psi)),
+            rf"Tiene la forma $y = x y' + f(y')$, con $f(p) = {sp.latex(psi.subs(DY, P))}$.",
         ),
         make_step(
             2,
             "Derivar respecto a x",
             r"y' = y' + \left(x + f'(y')\right)y''",
             "Al derivar ambos lados y simplificar queda "
-            "(x + f'(y')) y'' = 0.",
+            r"$\left(x + f'(y')\right) y'' = 0$.",
         ),
         make_step(
             3,
             "Caso y'' = 0",
             sp.latex(sp.Eq(Y, general)),
-            "Si y'' = 0, entonces y' = C es constante y se obtiene la familia "
-            "de rectas y = Cx + f(C).",
+            r"Si $y'' = 0$, entonces $y' = C$ es constante y se obtiene la familia "
+            r"de rectas $y = Cx + f(C)$.",
         ),
     ]
 
@@ -71,7 +72,7 @@ def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
                 4,
                 "Caso x + f'(y') = 0",
                 sp.latex(sp.Eq(Y, singular[0].expr)),
-                "Al eliminar y' entre x + f'(y') = 0 y la ecuación original se "
+                r"Al eliminar $y'$ entre $x + f'(y') = 0$ y la ecuación original se "
                 "obtiene la solución singular (envolvente).",
             )
         )

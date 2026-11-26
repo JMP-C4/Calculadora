@@ -12,7 +12,7 @@ import scipy.special as scipy_special
 import sympy as sp
 
 from odecalc.models import Solution, Verification
-from odecalc.symbols import C, DY, X, Y
+from odecalc.symbols import C, DY, X, Y, lambdify_modules
 
 
 def _is_zero(expr: sp.Expr) -> bool:
@@ -60,22 +60,7 @@ def simplify_residual(expr: sp.Expr) -> sp.Expr:
 
 
 def _modules() -> list[object]:
-    def _si(value):
-        return scipy_special.sici(value)[0]
-
-    def _ci(value):
-        return scipy_special.sici(value)[1]
-
-    return [
-        {
-            "erf": scipy_special.erf,
-            "erfi": scipy_special.erfi,
-            "Ei": scipy_special.expi,
-            "Si": _si,
-            "Ci": _ci,
-        },
-        "numpy",
-    ]
+    return lambdify_modules()
 
 
 def _is_finite_number(value: object) -> bool:
@@ -369,6 +354,78 @@ def _solve_for_constant(
     return candidates
 
 
+def _real_log_branch(expr: sp.Expr, subs_dict: dict[sp.Symbol, object]) -> sp.Expr:
+    """Selecciona la rama real ``ln(-u)`` cuando ``u`` es real negativo en el PVI.
+
+    Como ``d/du ln(-u) = 1/u = d/du ln(u)``, cambiar el signo del argumento del
+    logaritmo mantiene invariante el residuo diferencial y evita constantes ``+ i*pi``.
+    """
+
+    if not expr.has(sp.log):
+        return expr
+    allowed = set(subs_dict)
+    replacements: list[tuple[sp.Expr, sp.Expr]] = []
+    for atom in expr.atoms(sp.log):
+        argument = atom.args[0]
+        if argument.free_symbols - allowed:
+            continue
+        try:
+            evaluated = complex(sp.N(argument.subs(subs_dict)))
+        except Exception:
+            continue
+        if (
+            math.isfinite(evaluated.real)
+            and math.isfinite(evaluated.imag)
+            and abs(evaluated.imag) < 1e-10
+            and evaluated.real < -1e-15
+        ):
+            replacements.append((atom, sp.log(-argument)))
+    updated = expr
+    for old, new in replacements:
+        updated = updated.subs(old, new)
+    return updated
+
+
+def _reparameterize_exp_constant(
+    expr: sp.Expr,
+    constant: sp.Symbol,
+) -> tuple[sp.Expr, sp.Symbol] | None:
+    """Reemplaza ``exp(k*C + r)`` por ``K * exp(r)`` cuando ``C`` solo aparece en ``exp``."""
+
+    if not expr.has(sp.exp):
+        return None
+    k_symbol = sp.Symbol("_K_const", real=True)
+    found_coeff: sp.Expr | None = None
+    updated = expr
+    for atom in list(expr.atoms(sp.exp)):
+        arg = atom.args[0]
+        if not arg.has(constant):
+            continue
+        try:
+            arg_exp = sp.expand(arg)
+            coeff = sp.simplify(sp.diff(arg_exp, constant))
+            rem = sp.simplify(arg_exp - coeff * constant)
+        except Exception:
+            return None
+        if coeff == 0 or coeff.has(X, Y, constant) or rem.has(constant):
+            return None
+        if found_coeff is None:
+            found_coeff = coeff
+        elif sp.simplify(found_coeff - coeff) != 0:
+            return None
+        updated = updated.subs(atom, k_symbol * sp.exp(rem))
+    if found_coeff is None or updated.has(constant):
+        return None
+    return updated, k_symbol
+
+
+def _exact_ic_value(value: float) -> sp.Expr:
+    rounded = round(float(value))
+    if abs(float(value) - rounded) < 1e-12:
+        return sp.Integer(rounded)
+    return sp.Float(value)
+
+
 def apply_initial_conditions(
     solution: Solution,
     x0: float,
@@ -382,8 +439,11 @@ def apply_initial_conditions(
     warnings: list[str] = []
 
     if solution.is_implicit:
+        expr_real = _real_log_branch(solution.expr, {X: x0, Y: y0})
+        x0_sym = _exact_ic_value(x0)
+        y0_sym = _exact_ic_value(y0)
         try:
-            value = sp.simplify(solution.expr.subs({X: x0, Y: y0}))
+            value = sp.simplify(expr_real.subs({X: x0_sym, Y: y0_sym}))
         except Exception as exc:
             return None, [f"No se pudo evaluar la condición inicial: {exc}"]
         if value in (sp.zoo, sp.nan, sp.oo, -sp.oo) or not _is_finite_number(sp.N(value)):
@@ -393,10 +453,10 @@ def apply_initial_conditions(
             ]
         particular = Solution(
             form="implicit",
-            expr=solution.expr,
+            expr=expr_real,
             value=value,
             constant=solution.constant,
-            latex=sp.latex(solution.expr) + " = " + sp.latex(value),
+            latex=sp.latex(expr_real) + " = " + sp.latex(value),
             branch_note=solution.branch_note,
         )
         return particular, warnings
@@ -406,8 +466,9 @@ def apply_initial_conditions(
         key=lambda item: item.name,
     )
     if not constants:
+        expr_real = _real_log_branch(solution.expr, {X: x0})
         try:
-            value = complex(sp.N(solution.expr.subs(X, x0)))
+            value = complex(sp.N(expr_real.subs(X, x0)))
         except Exception as exc:
             return None, [f"No se pudo evaluar la solución en x₀: {exc}"]
         if abs(value - complex(y0)) > 1e-7:
@@ -417,28 +478,55 @@ def apply_initial_conditions(
                 "esta rama."
             )
             return None, warnings
+        if expr_real != solution.expr:
+            return (
+                Solution(
+                    form="explicit",
+                    expr=expr_real,
+                    latex=sp.latex(sp.Eq(Y, expr_real)),
+                    branch_note=solution.branch_note,
+                ),
+                warnings,
+            )
         return solution, warnings
 
     constant = constants[0]
     # Las integrales no elementales se reescriben como integrales definidas
     # desde x₀.  El valor de la integral en x₀ es cero, así que la constante
     # puede calcularse sin conocer una primitiva.
-    adapted = _with_definite_integrals(solution.expr, x0)
-    try:
-        equation = sp.Eq(adapted.subs(X, x0), y0)
-        candidates = _solve_for_constant(equation, constant, scale=float(y0))
-    except Exception as exc:
-        return None, [f"No se pudo despejar la constante con el PVI: {exc}"]
-
+    adapted = _with_definite_integrals(_real_log_branch(solution.expr, {X: x0}), x0)
+    x0_sym = _exact_ic_value(x0)
+    y0_sym = _exact_ic_value(y0)
     valid: list[sp.Expr] = []
-    for candidate in candidates:
+
+    def _try_solve(expr_to_solve: sp.Expr, target_symbol: sp.Symbol) -> list[sp.Expr]:
         try:
-            substituted = sp.simplify(adapted.subs(constant, candidate))
-            value = complex(sp.N(substituted.subs(X, x0)))
+            equation = sp.Eq(expr_to_solve.subs(X, x0_sym), y0_sym)
+            candidates = _solve_for_constant(equation, target_symbol, scale=float(y0))
         except Exception:
-            continue
-        if abs(value - complex(y0)) < 1e-6:
-            valid.append(substituted)
+            return []
+        found: list[sp.Expr] = []
+        for candidate in candidates:
+            try:
+                substituted = sp.simplify(expr_to_solve.subs(target_symbol, candidate))
+                value = complex(sp.N(substituted.subs(X, x0)))
+            except Exception:
+                continue
+            if (
+                math.isfinite(value.real)
+                and math.isfinite(value.imag)
+                and abs(value.imag) < 1e-7
+                and abs(value.real - float(y0)) < 1e-6
+            ):
+                found.append(substituted)
+        return found
+
+    valid = _try_solve(adapted, constant)
+    if not valid:
+        reparam = _reparameterize_exp_constant(adapted, constant)
+        if reparam is not None:
+            adapted_k, k_symbol = reparam
+            valid = _try_solve(adapted_k, k_symbol)
 
     if not valid:
         warnings.append(

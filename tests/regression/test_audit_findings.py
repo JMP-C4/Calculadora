@@ -26,7 +26,6 @@ from odecalc.parsing import parse_ode
 from odecalc.symbols import X
 
 
-@pytest.mark.xfail(strict=True, reason="C-01: _read_latex_group corta '-' en x^-2 / e^-x")
 @pytest.mark.parametrize("equation", ["y' = x^-2", "y' = e^-x"])
 def test_c01_negative_exponent_without_braces(equation: str) -> None:
     parsed = parse_ode(equation)
@@ -34,7 +33,6 @@ def test_c01_negative_exponent_without_braces(equation: str) -> None:
     assert parsed.rhs is not None
 
 
-@pytest.mark.xfail(strict=True, reason="C-02: _latex_to_plain toma solo 1 carácter tras \\sin")
 def test_c02_latex_function_implicit_product_argument() -> None:
     parsed = parse_ode(r"$$\frac{dy}{dx} = \sin 2x$$")
     assert parsed.error is None
@@ -42,7 +40,6 @@ def test_c02_latex_function_implicit_product_argument() -> None:
     assert sp.simplify(parsed.rhs - sp.sin(2 * X)) == 0
 
 
-@pytest.mark.xfail(strict=True, reason="C-03: odecalc.api.solve no degrada a numérico tras timeout")
 def test_c03_solve_degrades_to_numeric_on_symbolic_timeout() -> None:
     result = solve("y' = x*y + sin(x)", x0=0.0, y0=1.0, x_min=0.0, x_max=1.0, timeout=2.0)
     assert result.error is None
@@ -78,7 +75,6 @@ def test_c05_decay_model_parameter_accepted_with_parameters_parser() -> None:
     assert "lambda" in ecuacion.parametros
 
 
-@pytest.mark.xfail(strict=True, reason="A-02: _numeric_steps llama sp.latex sobre standard_form str")
 def test_a02_numeric_steps_latex_not_corrupted() -> None:
     res = SolveResult(
         input_text="y' = x + y",
@@ -88,9 +84,9 @@ def test_a02_numeric_steps_latex_not_corrupted() -> None:
     )
     step = _numeric_steps(res)[0]
     assert r"\text{dy/dx" not in step.latex
+    assert step.latex == r"\frac{dy}{dx} = x + y"
 
 
-@pytest.mark.xfail(strict=True, reason="A-03: analyze_validity ignora dominio de sqrt(1 - x^2)")
 def test_a03_validity_checks_even_root_domain() -> None:
     result = solve("y' = -x/sqrt(1-x^2)", x0=2.0, y0=0.0, compute_numeric=False)
     assert result.validity.interval != "(-∞, ∞) en ausencia de otras singularidades"
@@ -129,7 +125,6 @@ def test_a11_isoclines_constant_rhs_returns_2d_grid() -> None:
     assert datos.z.shape == (20, 20)
 
 
-@pytest.mark.xfail(strict=True, reason="M-01: solve_numeric no mapea funciones scipy.special como erfi")
 def test_m01_numeric_solver_supports_allowed_special_functions() -> None:
     parsed = parse_ode("y' = erfi(x)")
     assert parsed.rhs is not None
@@ -137,7 +132,6 @@ def test_m01_numeric_solver_supports_allowed_special_functions() -> None:
     assert numeric.success
 
 
-@pytest.mark.xfail(strict=True, reason="M-03: _puntos_singulares hace break en el primer log/sqrt")
 def test_m03_singularities_report_both_log_and_sqrt_notes() -> None:
     info = analizar_existencia(parse_ode("y' = log(x) + sqrt(y)").rhs)
     notas = " ".join(info.notas).lower()
@@ -145,7 +139,6 @@ def test_m03_singularities_report_both_log_and_sqrt_notes() -> None:
     assert "raíz cuadrada" in notas
 
 
-@pytest.mark.xfail(strict=True, reason="M-03: estimar_explosion asume direccion segun signo de y0")
 def test_m03_explosion_forward_detected_when_y0_negative_and_rhs_positive() -> None:
     explota, tiempo, direccion = estimar_explosion(parse_ode("y' = y^2 + 1").rhs, 0.0, -1.0)
     assert explota
