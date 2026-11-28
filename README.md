@@ -28,7 +28,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-streamlit run app.py
+
+mas abajo esta para ingresar a la versión web y a la versión de escritorio
 ```
 
 La aplicación abre en `http://localhost:8501`. No necesita internet ni clave de
