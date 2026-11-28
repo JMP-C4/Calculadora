@@ -21,7 +21,7 @@ python -c "import tkinter; from PIL import ImageTk; print(tkinter.TkVersion)"
 1. Cada método nuevo entra con pruebas, pasos explicados y verificación.
 2. Nunca se presenta como correcta una solución con residuo distinto de cero:
    si la verificación simbólica no basta, se exige comprobación numérica.
-3. Los casos de la sección 2.2 de `PLAN_MEJORAS_ODE_CALCULATOR.md` son
+3. Los casos de regresión en `tests/regression/test_plan_cases.py` son
    intocables: cualquier cambio debe mantenerlos verdes.
 4. Las soluciones implícitas son de primera clase; no se fuerza un despeje
    que introduzca ramas incorrectas.

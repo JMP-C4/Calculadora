@@ -233,3 +233,25 @@ def test_leer_preferencia_acepta_default_para_escritorio(tmp_path, monkeypatch) 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert leer_preferencia() == NATURAL
     assert leer_preferencia(default="Algebraica") == "Algebraica"
+
+
+def test_fragmentos_no_captura_prosa_y_soporta_intervalos_y_signos() -> None:
+    texto = (
+        "Si x ≠ 0, la ecuación μ(x)·y' = 0 implica y = C o x = 0. "
+        "Intervalo: (0, ∞). Regla de signos: (-2)*(-3) = +6."
+    )
+    frags_est = fragmentos(texto, "Algebraica")
+    textos_math = [c for c, es_tex in frags_est if es_tex]
+    assert any(r"\neq" in t for t in textos_math)
+    assert any(r"\infty" in t for t in textos_math)
+    assert any("(-2)" in t for t in textos_math)
+    assert all("implica" not in t for t in textos_math)
+
+    adaptado = adaptar_latex_mathtext(
+        r"\begin{cases} x & \text{for}\: x \ge 0 \\ -x & \text{otherwise} \end{cases}"
+    )
+    assert r"\geq" in adaptado
+    assert r"\ge " not in adaptado
+    assert r"\sqrt{x + 1}" in adaptar_latex_mathtext("√(x + 1)")
+    assert r"e^{\int P(x) dx}" in adaptar_latex_mathtext("e^(∫ P(x) dx)")
+

@@ -643,13 +643,13 @@
     }
   });
 
-  const startDemo = () => {
+  const startDemo = (options = { scroll: true }) => {
     const demo = EXERCISES.find((exercise) => exercise.id === "lin-01");
-    loadExercise(demo, { solveNow: true, scroll: true });
+    loadExercise(demo, { solveNow: true, scroll: Boolean(options?.scroll) });
   };
 
-  $("#demo-button")?.addEventListener("click", startDemo);
-  $("#nav-demo")?.addEventListener("click", startDemo);
+  $("#demo-button")?.addEventListener("click", () => startDemo({ scroll: true }));
+  $("#nav-demo")?.addEventListener("click", () => startDemo({ scroll: true }));
 
   /* --------------------------------------------------------------- editor */
 
@@ -786,6 +786,7 @@
       item.append(priority, body);
       methodList.appendChild(item);
     });
+    typeset([methodList]);
   };
 
   const renderSteps = (data) => {
@@ -1149,6 +1150,7 @@
 
   const pointFromEvent = (event) => {
     const rect = annotateCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return { x: 0, y: 0 };
     return {
       x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
       y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
@@ -1188,6 +1190,7 @@
   annotateCanvas?.addEventListener("pointerup", finishStroke);
   annotateCanvas?.addEventListener("pointercancel", finishStroke);
   annotateCanvas?.addEventListener("pointerleave", (event) => {
+    if (annotateCanvas?.hasPointerCapture?.(event.pointerId)) return;
     if (state.currentStroke) finishStroke(event);
   });
 
@@ -1274,7 +1277,7 @@
     updateCanvasModeLabel();
 
     if (window.location.protocol.startsWith("http")) {
-      window.setTimeout(startDemo, 420);
+      window.setTimeout(() => startDemo({ scroll: false }), 420);
     }
   };
 

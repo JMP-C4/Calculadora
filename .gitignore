@@ -17,6 +17,7 @@ dist/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.sandbox.*
 htmlcov/
 
 # Skills instaladas (se reproducen con skills-lock.json)

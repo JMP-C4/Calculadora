@@ -18,6 +18,7 @@ import threading
 import time
 import tkinter as tk
 import webbrowser
+from functools import lru_cache
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any
@@ -66,11 +67,44 @@ _METHOD_LABELS: dict[str, str] = {
 }
 
 
+_KPI_METHOD_LABELS: dict[str, str] = {
+    "linear": "Lineal 1.º orden",
+    "separable": "Separable",
+    "exact": "Exacta",
+    "bernoulli": "Bernoulli",
+    "homogeneous": "Homogénea",
+    "reducible_homogeneous": "Red. homogénea",
+    "substitution_linear_combo": "Sust. u = ax+by",
+    "riccati": "Riccati",
+    "clairaut": "Clairaut",
+    "lagrange": "Lagrange",
+    "integrating_factor_x": "Factor μ(x)",
+    "integrating_factor_y": "Factor μ(y)",
+    "integrating_factor_xy": "Factor μ(xy)",
+    "integrating_factor_x_plus_y": "Factor μ(x+y)",
+    "integrating_factor_x2_plus_y2": "Factor μ(x²+y²)",
+    "dsolve": "Respaldo dsolve",
+    "numeric": "Numérico SciPy",
+}
+
+_VERIFICATION_STATUS_LABELS: dict[str, str] = {
+    "ok": "Verificada (residuo 0)",
+    "fail": "No verificada",
+    "unverified": "Sin verificación concluyente",
+}
+
+
 def _etiqueta_metodo(method: str | None) -> str:
     if not method:
         return "—"
     human = _METHOD_LABELS.get(method)
     return f"{human} ({method})" if human else method
+
+
+def _etiqueta_kpi_metodo(method: str | None) -> str:
+    if not method:
+        return "—"
+    return _KPI_METHOD_LABELS.get(method, str(method))[:20]
 
 try:
     from matplotlib.figure import Figure
@@ -1223,7 +1257,9 @@ class ODEApp(tk.Tk):
     def _formula_en_linea(self, latex: str, solucion: object, notacion: str) -> str:
         """Devuelve la fórmula delimitada para renderizarla dentro del texto."""
 
-        texto = self._expr(latex, solucion, notacion)
+        texto = " ".join(self._expr(latex, solucion, notacion).splitlines()).strip()
+        if len(texto) >= 2 and texto.startswith("$") and texto.endswith("$"):
+            texto = texto.strip("$").strip()
         if texto and normalizar(notacion) in ("Algebraica", NATURAL):
             return f"${texto}$"
         return texto
@@ -1390,8 +1426,11 @@ class ODEApp(tk.Tk):
             if branch_note:
                 lines.append(f"Nota de rama: {branch_note}")
         if result.verification:
+            estado_ver = _VERIFICATION_STATUS_LABELS.get(
+                result.verification.status, result.verification.status
+            )
             lines.append(
-                f"\nVerificación: {result.verification.status}\n"
+                f"\nVerificación: {estado_ver}\n"
                 f"{result.verification.message}"
             )
             residuo = getattr(result.verification, "simplified_residual", None)
@@ -1400,8 +1439,12 @@ class ODEApp(tk.Tk):
                     f"Residuo simbólico: {self._residuo_en_notacion(residuo, notacion)}"
                 )
         if result.particular_verification:
+            estado_pvi = _VERIFICATION_STATUS_LABELS.get(
+                result.particular_verification.status,
+                result.particular_verification.status,
+            )
             lines.append(
-                f"\nVerificación del PVI: {result.particular_verification.status}\n"
+                f"\nVerificación del PVI: {estado_pvi}\n"
                 f"{result.particular_verification.message}"
             )
             residuo_pvi = getattr(result.particular_verification, "simplified_residual", None)
@@ -2109,8 +2152,11 @@ class ODEApp(tk.Tk):
         self._schedule_poll()
 
     def _update_kpis(self, result: Any) -> None:
-        method = getattr(result, "chosen_method", None) or "—"
-        self.kpi_method.configure(text=str(method)[:18], fg=ACCENT if method != "—" else INK_SOFT)
+        method = getattr(result, "chosen_method", None)
+        label_method = _etiqueta_kpi_metodo(method)
+        self.kpi_method.configure(
+            text=label_method, fg=ACCENT if method else INK_SOFT
+        )
 
         verification = getattr(result, "verification", None)
         if getattr(result, "error", None):
@@ -2149,20 +2195,15 @@ class ODEApp(tk.Tk):
         super().destroy()
 
 
-def _renderizar_png_latex(
-    latex: str,
-    *,
-    color: str = INK_SOFT,
-    fontsize: int = 11,
-    dpi: int = 115,
+@lru_cache(maxsize=256)
+def _renderizar_png_latex_cached(
+    adaptado: str,
+    color: str,
+    fontsize: int,
+    dpi: int,
 ) -> bytes:
-    """Genera los bytes PNG de una fórmula LaTeX adaptada a ``mathtext``."""
-
     if Figure is None:
         raise RuntimeError("Matplotlib no está disponible")
-    adaptado = adaptar_latex_mathtext(latex)
-    if not adaptado:
-        raise ValueError("Fórmula LaTeX vacía")
     figura = Figure(figsize=(0.02, 0.02), dpi=dpi)
     figura.patch.set_alpha(0)
     figura.text(
@@ -2182,6 +2223,23 @@ def _renderizar_png_latex(
         pad_inches=0.03,
     )
     return buffer.getvalue()
+
+
+def _renderizar_png_latex(
+    latex: str,
+    *,
+    color: str = INK_SOFT,
+    fontsize: int = 11,
+    dpi: int = 115,
+) -> bytes:
+    """Genera los bytes PNG de una fórmula LaTeX adaptada a ``mathtext``."""
+
+    if Figure is None:
+        raise RuntimeError("Matplotlib no está disponible")
+    adaptado = adaptar_latex_mathtext(latex)
+    if not adaptado:
+        raise ValueError("Fórmula LaTeX vacía")
+    return _renderizar_png_latex_cached(adaptado, color, fontsize, dpi)
 
 
 def main() -> None:

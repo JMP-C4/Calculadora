@@ -81,18 +81,20 @@ def _pasos_separables(rhs: sp.Expr, solucion_latex: str) -> list[Paso]:
     g_expr, h_expr = partes
     return [
         Paso(
-            titulo="Identificar la estructura separable",
+            titulo="Identificar la estructura separable y fórmula",
             explicacion=(
-                "El lado derecho se factoriza como un producto de una función "
-                "de x por una función de y. Esto permite separar las variables."
+                "¿Por qué este método? El lado derecho se factoriza como producto "
+                "$g(x)\\cdot h(y)$. Fórmula: $\\frac{1}{h(y)}\\,dy = g(x)\\,dx$, "
+                "luego integramos cada variable por separado."
             ),
-            latex=rf"y' = {sp.latex(g_expr)} \cdot {sp.latex(h_expr)}",
+            latex=rf"y' = \left({sp.latex(g_expr)}\right) \cdot \left({sp.latex(h_expr)}\right)",
         ),
         Paso(
             titulo="Separar las variables",
             explicacion=(
-                "Dividimos entre h(y) y multiplicamos por dx. Cada lado queda "
-                "con una sola variable."
+                "Dividimos entre $h(y)$ (suponiendo $h(y) \\neq 0$, analizando sus raíces "
+                "aparte) y multiplicamos por $dx$. Si $h(y)$ es negativo, el cociente "
+                "hereda el signo negativo ($+/ - = -$)."
             ),
             latex=(
                 rf"\frac{{dy}}{{{sp.latex(h_expr)}}} = "
@@ -100,10 +102,11 @@ def _pasos_separables(rhs: sp.Expr, solucion_latex: str) -> list[Paso]:
             ),
         ),
         Paso(
-            titulo="Integrar ambos lados",
+            titulo="Integrar ambos lados aplicando fórmulas elementales",
             explicacion=(
-                "Integramos respecto de su variable e incorporamos una única "
-                "constante de integración C."
+                "Integramos cada miembro respecto a su variable (potencia "
+                "$\\int u^n du = \\frac{u^{n+1}}{n+1}$, logarítmica $\\int \\frac{du}{u} = \\ln|u|$, "
+                "exponencial/trigonométrica) e incorporamos una única constante $+C = C_2 - C_1$."
             ),
             latex=(
                 rf"\int \frac{{dy}}{{{sp.latex(h_expr)}}} = "
@@ -111,10 +114,11 @@ def _pasos_separables(rhs: sp.Expr, solucion_latex: str) -> list[Paso]:
             ),
         ),
         Paso(
-            titulo="Despejar la solución",
+            titulo="Despejar la solución y comprobar ramas",
             explicacion=(
-                "Si es posible, se despeja y. Si no, se conserva la solución "
-                "implícita F(x,y)=C, que también es una respuesta válida."
+                "Si es posible, se despeja $y$ simplificando signos ($+(-a) = -a$, "
+                "$-(-a) = +a$). Si no, se conserva la solución implícita $F(x,y)=C$, "
+                "igualmente válida."
             ),
             latex=solucion_latex or r"F(x,y) = C",
         ),
@@ -128,10 +132,12 @@ def _pasos_lineales(rhs: sp.Expr, solucion_latex: str) -> list[Paso]:
     p_expr, q_expr = coeficientes
     return [
         Paso(
-            titulo="Escribir la forma lineal estándar",
+            titulo="Escribir la forma lineal estándar y su fórmula",
             explicacion=(
-                "Toda EDO lineal de primer orden se escribe como "
-                "y' + P(x)y = Q(x). Identificamos P y Q."
+                "Toda EDO lineal de primer orden se escribe como $y' + P(x)y = Q(x)$ "
+                "(al transponer términos de un lado al otro, los signos cambian por suma/resta "
+                "del inverso aditivo). Usaremos $\\mu(x) = e^{\\int P(x)\\,dx}$ y "
+                "$y = \\frac{1}{\\mu(x)}\\left(\\int \\mu(x)Q(x)\\,dx + C\\right)$."
             ),
             latex=(
                 rf"y' + \left({sp.latex(p_expr)}\right)y = "
@@ -139,26 +145,28 @@ def _pasos_lineales(rhs: sp.Expr, solucion_latex: str) -> list[Paso]:
             ),
         ),
         Paso(
-            titulo="Calcular el factor integrante",
+            titulo="Calcular el factor integrante μ(x)",
             explicacion=(
-                "El factor integrante μ(x) = exp(∫P dx) convierte el lado "
-                "izquierdo en la derivada de un producto."
+                "Calculamos $\\int P(x)\\,dx$ y exponenciamos $\\mu(x) = e^{\\int P(x)\\,dx}$. "
+                "Por regla de la cadena, $\\mu'(x) = \\mu(x)P(x)$."
             ),
             latex=rf"\mu(x) = e^{{\int {sp.latex(p_expr)}\,dx}}",
         ),
         Paso(
-            titulo="Multiplicar por μ(x)",
+            titulo="Multiplicar toda la ecuación por μ(x)",
             explicacion=(
-                "Al multiplicar toda la ecuación por μ, el miembro izquierdo "
-                "es exactamente (μy)'."
+                "Al multiplicar toda la ecuación por $\\mu(x)$ (aplicando regla de signos "
+                "y distributiva $\\mu\\cdot Q$), el miembro izquierdo coincide exactamente "
+                "con la derivada del producto $(\\mu y)'$."
             ),
             latex=rf"\left(\mu(x)\,y\right)' = \mu(x)\,{sp.latex(q_expr)}",
         ),
         Paso(
-            titulo="Integrar y despejar y",
+            titulo="Integrar y despejar y dividiendo entre μ(x)",
             explicacion=(
-                "Integramos ambos lados respecto de x y dividimos entre μ(x), "
-                "que no se anula en el dominio real."
+                "Integramos ambos lados respecto de $x$ (sumando $+C$) y dividimos entre "
+                "$\\mu(x) = e^{\\int P dx}$ (multiplicar por $\\mu^{-1}$ invierte el signo "
+                "del exponente: $-(-A) = +A$)."
             ),
             latex=solucion_latex or r"y = \frac{1}{\mu(x)}\left(\int \mu Q\,dx + C\right)",
         ),
@@ -199,16 +207,18 @@ def _pasos_exactas(ecuacion, solucion_latex: str) -> list[Paso]:
             latex=rf"F(x,y) = \int {sp.latex(m_expr)}\,dx + g(y)",
         ),
         Paso(
-            titulo="Determinar g(y)",
+            titulo="Determinar g(y) igualando F_y con N(x,y)",
             explicacion=(
-                "Derivamos F respecto de y, igualamos con N y despejamos g'(y)."
+                "Derivamos $F$ respecto de $y$, igualamos con $N(x,y)$ (cancelando los términos "
+                "en $x$; recuerda que restar un negativo equivale a sumar: $-(-B) = +B$) e "
+                "integramos $g'(y)$."
             ),
             latex=rf"\frac{{\partial F}}{{\partial y}} = {sp.latex(n_expr)}",
         ),
         Paso(
             titulo="Escribir la solución general",
             explicacion=(
-                "Las soluciones son las curvas de nivel del potencial: F(x,y)=C."
+                "Las soluciones son las curvas de nivel del potencial: $F(x,y) = C$."
             ),
             latex=solucion_latex or r"F(x,y) = C",
         ),
@@ -222,9 +232,10 @@ def _pasos_bernoulli(rhs: sp.Expr, solucion_latex: str) -> list[Paso]:
     p_expr, q_expr, n_expr = coeficientes
     return [
         Paso(
-            titulo="Reconocer la ecuación de Bernoulli",
+            titulo="Reconocer la ecuación de Bernoulli y su cambio de variable",
             explicacion=(
-                "Tiene la forma y' + P(x)y = Q(x)yⁿ con n distinto de 0 y 1."
+                "¿Por qué este método? Tiene la forma $y' + P(x)y = Q(x)y^n$ con "
+                "$n \\neq 0, 1$. Usamos la sustitución $v = y^{1-n}$ para linealizarla."
             ),
             latex=(
                 rf"y' + \left({sp.latex(p_expr)}\right)y = "
@@ -232,25 +243,26 @@ def _pasos_bernoulli(rhs: sp.Expr, solucion_latex: str) -> list[Paso]:
             ),
         ),
         Paso(
-            titulo="Aplicar la sustitución",
+            titulo="Aplicar la sustitución v = y^(1−n) y su derivada",
             explicacion=(
-                "El cambio v = y^(1-n) transforma la ecuación de Bernoulli en "
-                "una ecuación lineal en v."
+                "Calculamos $1-n$ (si $n<0$, $1-(-|n|) = 1+|n|$) y aplicamos regla de la "
+                "cadena: $v' = (1-n)y^{-n}y'$. Dividimos entre $y^n$ y multiplicamos por $(1-n)$."
             ),
             latex=rf"v = y^{{1-{sp.latex(n_expr)}}}, \qquad v' = (1-n)y^{{-n}}y'",
         ),
         Paso(
-            titulo="Resolver la ecuación lineal en v",
+            titulo="Resolver la ecuación lineal resultante en v",
             explicacion=(
-                "Se aplica el factor integrante a la ecuación lineal resultante."
+                "Con signos y productos simplificados (recuerda $-\\cdot- = +$), se aplica "
+                "el factor integrante $\\mu(x) = e^{\\int (1-n)P(x)\\,dx}$ a la EDO lineal en $v$."
             ),
             latex=rf"v' + (1-n)P(x)v = (1-n)Q(x)",
         ),
         Paso(
-            titulo="Volver a la variable original",
+            titulo="Volver a la variable original y = v^(1/(1−n))",
             explicacion=(
-                "Se despeja y a partir de v = y^(1-n). Hay que revisar la rama "
-                "y el signo al tomar raíces."
+                "Se despeja $y$ elevando a la potencia recíproca $\\frac{1}{1-n}$ y se "
+                "comprueba la rama real y la solución $y=0$ si $n>0$."
             ),
             latex=solucion_latex or r"y^{1-n} = v(x)",
         ),

@@ -230,7 +230,8 @@ def equilibrium_solutions(
         if root.has(variable) or root in (sp.zoo, sp.nan, sp.oo, -sp.oo):
             continue
         try:
-            if sp.im(sp.N(root)) != 0:
+            imag = complex(sp.N(root)).imag
+            if abs(imag) > 1e-9:
                 continue
         except Exception:
             continue

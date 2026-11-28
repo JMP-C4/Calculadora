@@ -47,10 +47,24 @@ _TOKENS_MATEMATICOS = {
     "i",
     "x",
     "y",
+    "u",
+    "v",
+    "t",
     "c",
     "k",
     "g",
+    "h",
     "m",
+    "n",
+    "p",
+    "q",
+    "dx",
+    "dy",
+    "du",
+    "dv",
+    "dz",
+    "dt",
+    "dr",
     "mu",
     "nu",
     "pi",
@@ -62,6 +76,20 @@ _TOKENS_MATEMATICOS = {
     "sin",
     "cos",
     "tan",
+    "asin",
+    "acos",
+    "atan",
+    "sinh",
+    "cosh",
+    "tanh",
+    "erf",
+    "erfi",
+    "ci",
+    "si",
+    "ei",
+    "acot",
+    "abs",
+    "piecewise",
     "sqrt",
     "frac",
     "dfrac",
@@ -153,6 +181,61 @@ _GRIEGAS_UNICODE = {
     "ψ": r"\psi",
 }
 _SUBINDICES_UNICODE = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
+_SUPERINDICES_UNICODE = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ", "0123456789n")
+
+
+def _reemplazar_potencia_parentesis(texto: str) -> str:
+    """Convierte ``^(...)`` (incluyendo paréntesis anidados) en ``^{...}``."""
+
+    if "^(" not in texto and "^ (" not in texto:
+        return texto
+    resultado: list[str] = []
+    pos = 0
+    patron = re.compile(r"\^\s*\(")
+    while (encontrado := patron.search(texto, pos)) is not None:
+        par_idx = texto.find("(", encontrado.start())
+        bloque = _leer_bloque(texto, par_idx, "(", ")")
+        if bloque is None:
+            break
+        contenido, fin = bloque
+        resultado.append(texto[pos : encontrado.start()])
+        resultado.append(f"^{{{_reemplazar_potencia_parentesis(contenido.strip())}}}")
+        pos = fin
+    resultado.append(texto[pos:])
+    return "".join(resultado)
+
+
+def _unicode_sqrt_a_latex(texto: str) -> str:
+    """Convierte ``√(...)`` o ``√x`` en ``\\sqrt{...}`` para ``mathtext``."""
+
+    if "√" not in texto:
+        return texto
+    salida: list[str] = []
+    i = 0
+    n = len(texto)
+    while i < n:
+        if texto[i] == "√":
+            j = i + 1
+            while j < n and texto[j].isspace():
+                j += 1
+            if j < n and texto[j] == "(":
+                bloque = _leer_bloque(texto, j, "(", ")")
+                if bloque is not None:
+                    contenido, fin = bloque
+                    salida.append(rf"\sqrt{{{_unicode_sqrt_a_latex(contenido.strip())}}}")
+                    i = fin
+                    continue
+            if j < n:
+                k = j
+                while k < n and (texto[k].isalnum() or texto[k] in ("_", "\\")):
+                    k += 1
+                token = texto[j:k] if k > j else texto[j]
+                salida.append(rf"\sqrt{{{token}}}")
+                i = k if k > j else j + 1
+                continue
+        salida.append(texto[i])
+        i += 1
+    return "".join(salida)
 
 
 def _leer_bloque(texto: str, inicio: int, abrir: str, cerrar: str) -> tuple[str, int] | None:
@@ -296,8 +379,14 @@ def _aplanar_comandos_anidados(
                             den = _aplanar(b2[0])
                             num_c = num.replace(" ", "")
                             den_c = den.replace(" ", "")
-                            if estilo == "natural" and re.fullmatch(r"d\^?\d*[xy]", num_c) and re.fullmatch(r"d[xy]\^?\d*", den_c):
-                                out.append(f"{num_c}/{den_c}")
+                            num_nat = re.sub(r"\\partial", "∂", num_c)
+                            den_nat = re.sub(r"\\partial", "∂", den_c)
+                            if (
+                                estilo == "natural"
+                                and re.fullmatch(r"(?:d|∂)\^?\d*[A-Za-z]+", num_nat)
+                                and re.fullmatch(r"(?:d|∂)[A-Za-z]+\^?\d*", den_nat)
+                            ):
+                                out.append(f"{num_nat}/{den_nat}")
                             elif estilo == "natural":
                                 n_txt = f"({num})" if _necesita_parentesis_frac(num) else num
                                 d_txt = f"({den})" if _necesita_parentesis_frac(den) else den
@@ -333,28 +422,44 @@ def adaptar_latex_mathtext(latex: str) -> str:
     if len(valor) >= 2 and valor.startswith("$") and valor.endswith("$"):
         valor = valor[1:-1].strip()
 
+    def _transformar_cuerpo_cases(cuerpo: str) -> str:
+        filas = [f.strip() for f in re.split(r"\\\\", cuerpo) if f.strip()]
+        ramas: list[str] = []
+        for fila in filas:
+            if "&" in fila:
+                expr_r, cond_r = (p.strip() for p in fila.split("&", 1))
+                cond_r = re.sub(r"\\text\{for\}(?:\\:|\s)*", r"\\mathrm{si}\\ ", cond_r)
+                cond_r = re.sub(r"\\text\{otherwise\}", r"\\mathrm{en\\ otro\\ caso}", cond_r)
+                ramas.append(rf"{expr_r}\ ({cond_r})")
+            else:
+                ramas.append(fila)
+        unido = r"\ ;\ ".join(ramas)
+        return rf"\left\{{\ {unido}\right."
+
     def _convertir_cases(texto: str) -> str:
         salida: list[str] = []
         pos = 0
-        while (ini := texto.find(r"\begin{cases}", pos)) != -1:
-            fin = texto.find(r"\end{cases}", ini)
-            if fin == -1:
+        while pos < len(texto):
+            ini_env = texto.find(r"\begin{cases}", pos)
+            ini_cmd = texto.find(r"\cases{", pos)
+            candidatos = [p for p in (ini_env, ini_cmd) if p != -1]
+            if not candidatos:
                 break
-            salida.append(texto[pos:ini])
-            cuerpo = texto[ini + 13 : fin]
-            filas = [f.strip() for f in re.split(r"\\\\", cuerpo) if f.strip()]
-            ramas: list[str] = []
-            for fila in filas:
-                if "&" in fila:
-                    expr_r, cond_r = (p.strip() for p in fila.split("&", 1))
-                    cond_r = re.sub(r"\\text\{for\}(?:\\:|\s)*", r"\\mathrm{si}\\ ", cond_r)
-                    cond_r = re.sub(r"\\text\{otherwise\}", r"\\mathrm{en\\ otro\\ caso}", cond_r)
-                    ramas.append(rf"{expr_r}\ ({cond_r})")
-                else:
-                    ramas.append(fila)
-            unido = r"\ ;\ ".join(ramas)
-            salida.append(rf"\left\{{\ {unido}\right.")
-            pos = fin + 11
+            ini = min(candidatos)
+            if ini == ini_env:
+                fin = texto.find(r"\end{cases}", ini)
+                if fin == -1:
+                    break
+                salida.append(texto[pos:ini])
+                salida.append(_transformar_cuerpo_cases(texto[ini + 13 : fin]))
+                pos = fin + 11
+            else:
+                bloque = _leer_bloque(texto, ini + 6, "{", "}")
+                if bloque is None:
+                    break
+                salida.append(texto[pos:ini])
+                salida.append(_transformar_cuerpo_cases(bloque[0]))
+                pos = bloque[1]
         salida.append(texto[pos:])
         return "".join(salida)
 
@@ -365,10 +470,20 @@ def adaptar_latex_mathtext(latex: str) -> str:
         (r"\tfrac", r"\frac"),
         (r"\displaystyle", ""),
         (r"\limits", ""),
+        (r"\:", r"\,"),
     )
     for origen, destino in reemplazos:
         valor = valor.replace(origen, destino)
+    valor = re.sub(r"\\le(?![A-Za-z])", r"\\leq", valor)
+    valor = re.sub(r"\\ge(?![A-Za-z])", r"\\geq", valor)
     valor = re.sub(r"\\text\{([^{}]*)\}", lambda m: r"\mathrm{" + m.group(1) + "}", valor)
+    valor = _unicode_sqrt_a_latex(valor)
+    valor = _reemplazar_potencia_parentesis(valor)
+    valor = re.sub(
+        r"([A-Za-z0-9\)\]])\s*([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]+)",
+        lambda m: f"{m.group(1)}^{{{m.group(2).translate(_SUPERINDICES_UNICODE)}}}",
+        valor,
+    )
     reemplazos_unicode = (
         ("−", "-"),
         ("·", r"\cdot "),
@@ -381,8 +496,11 @@ def adaptar_latex_mathtext(latex: str) -> str:
         ("∞", r"\infty "),
         ("∂", r"\partial "),
         ("∫", r"\int "),
+        ("Σ", r"\sum "),
+        ("∈", r"\in "),
         ("→", r"\rightarrow "),
         ("⇒", r"\Longrightarrow "),
+        ("⇔", r"\Leftrightarrow "),
         ("′", "'"),
         ("″", "''"),
     )
@@ -420,8 +538,9 @@ def _codigo_a_latex(texto: str, *, funciones: bool = True) -> str:
         .replace("≠", r"\neq " if funciones else "!=")
     )
     if funciones:
-        valor = valor.replace("±", r"\pm ")
-        valor = re.sub(r"∂\s*([A-Za-z])\s*/\s*∂\s*([A-Za-z])", r"\\frac{\\partial \1}{\\partial \2}", valor)
+        valor = valor.replace("±", r"\pm ").replace("∫", r"\int ").replace("∂", r"\partial ")
+        valor = re.sub(r"\\partial\s*([A-Za-z])\s*/\s*\\partial\s*([A-Za-z])", r"\\frac{\\partial \1}{\\partial \2}", valor)
+        valor = re.sub(r"([A-Za-z0-9\)\]])\s*([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]+)", lambda m: f"{m.group(1)}^{{{m.group(2).translate(_SUPERINDICES_UNICODE)}}}", valor)
     valor = re.sub(
         r"([A-Za-z])([₀₁₂₃₄₅₆₇₈₉]+)",
         lambda m: f"{m.group(1)}_{m.group(2).translate(_SUBINDICES_UNICODE)}",
@@ -430,9 +549,9 @@ def _codigo_a_latex(texto: str, *, funciones: bool = True) -> str:
     if funciones:
         valor = re.sub(r"\bDy\b", "y'", valor)
     valor = re.sub(r"\bdy\s*/\s*dx\b", r"\\frac{dy}{dx}", valor)
-    valor = re.sub(r"\*\*\(([^()]+)\)", r"^{\1}", valor)
-    valor = valor.replace("**", "^")
+    valor = _reemplazar_potencia_parentesis(valor.replace("**", "^"))
     if funciones:
+        valor = _unicode_sqrt_a_latex(valor)
         valor = _reemplazar_funcion_parentesis(valor, "sqrt", r"\sqrt{{{}}}")
         valor = _reemplazar_funcion_parentesis(valor, "exp", r"e^{{{}}}")
         valor = _reemplazar_funcion_parentesis(valor, "Abs", r"\left|{{{}}}\right|")
@@ -462,6 +581,18 @@ def _leer_solucion(solucion: object | None) -> str:
     return _limpiar(f"{expresion} = {texto(solucion.value)}")
 
 
+_EXPONENTE_INFIJO_APERTURA = "\ue000"
+_EXPONENTE_INFIJO_CIERRE = "\ue001"
+
+
+def _exponente_infijo(contenido: str) -> str:
+    """Conserva la agrupación de exponentes compuestos al pasar a notación infija."""
+
+    if re.fullmatch(r"[A-Za-z0-9]+", contenido):
+        return f"^{contenido}"
+    return f"^{_EXPONENTE_INFIJO_APERTURA}{contenido}{_EXPONENTE_INFIJO_CIERRE}"
+
+
 def latex_a_infijo(texto: str) -> str:
     """Convierte un LaTeX simple a texto infijo cuando no hay objeto sympy."""
 
@@ -481,7 +612,9 @@ def latex_a_infijo(texto: str) -> str:
         (r"\\infty", "∞"),
         (r"\\partial", "∂"),
         (r"\\leq", "<="),
+        (r"\\le(?![A-Za-z])", "<="),
         (r"\\geq", ">="),
+        (r"\\ge(?![A-Za-z])", ">="),
         (r"\\neq", "!="),
         (r"\\mathrm\{e\}", "e"),
         (r"\\mathrm\{([^{}]*)\}", r"\1"),
@@ -499,7 +632,7 @@ def latex_a_infijo(texto: str) -> str:
         (r"\\cdot\s*", "*"),
         (r"\\times\s*", "*"),
         (r"_([0-9])", r"\1"),
-        (r"\^\{([^{}]*)\}", r"^\1"),
+        (r"\^\{([^{}]*)\}", lambda m: _exponente_infijo(m.group(1))),
         (r"_\{([^{}]*)\}", r"_\1"),
         (r"\\,", " "),
         (r"\\;", " "),
@@ -509,6 +642,9 @@ def latex_a_infijo(texto: str) -> str:
     for patron, sustitucion in reemplazos:
         convertido = re.sub(patron, sustitucion, convertido)
     convertido = convertido.replace("{", "").replace("}", "")
+    convertido = convertido.replace(_EXPONENTE_INFIJO_APERTURA, "(").replace(
+        _EXPONENTE_INFIJO_CIERRE, ")"
+    )
     convertido = convertido.replace("**", "^").replace("\\", "")
     return _limpiar(convertido)
 
@@ -539,7 +675,9 @@ def latex_a_natural(texto: str) -> str:
         (r"\\infty", "∞"),
         (r"\\partial", "∂"),
         (r"\\leq", "≤"),
+        (r"\\le(?![A-Za-z])", "≤"),
         (r"\\geq", "≥"),
+        (r"\\ge(?![A-Za-z])", "≥"),
         (r"\\neq", "≠"),
         (r"\\pm", "±"),
         (r"\\mu", "μ"),
@@ -622,7 +760,7 @@ def _normalizar_delimitadores(texto: str) -> str:
 
     def reemplazar(encontrado: re.Match[str]) -> str:
         contenido = next(grupo for grupo in encontrado.groups() if grupo is not None)
-        contenido = _codigo_a_latex(contenido.strip())
+        contenido = _codigo_a_latex(" ".join(contenido.splitlines()).strip())
         return f"${contenido}$" if contenido else ""
 
     return _DELIMITADOS.sub(reemplazar, texto)
@@ -766,24 +904,36 @@ _PROSA_STOP = frozenset(
         "sí", "si", "ya", "más", "pero", "porque", "así", "también",
         "finalmente", "primero", "después", "luego", "entonces", "ni", "hay",
         "tiene", "puede", "pueden", "debe", "deben", "entre", "sobre", "según",
-        "aparte", "bien", "mal", "y", "o", "u", "además", "deriva", "sigue",
-        "llega", "permite", "explica", "representa",
+        "aparte", "bien", "mal", "y", "o", "u", "e", "a", "en", "es", "son",
+        "al", "lo", "le", "además", "deriva", "sigue", "llega", "permite",
+        "explica", "representa", "implica", "equivale", "da", "hace", "vale",
+        "queda", "cumple", "verifica", "anula", "resulta", "obtiene",
+        "sustituir", "derivar", "integrar", "despejar", "separa", "igualamos",
+        "multiplica", "divide", "resta", "suma", "cambia", "pasa", "cancela",
+        "evalúa", "evalua", "tomando", "usando", "aplicando",
     }
 )
 _PROSA_CONJUNCIONES = frozenset({"y", "o", "u", "e", "a"})
 _FUNCION_LLAMADA = re.compile(
-    r"\b(?:sqrt|exp|ln|log|sin|cos|tan|asin|acos|atan|Abs|erf|erfi|Ci|Si|Ei|acot)\s*\([^()]*\)"
+    r"(?:\b(?:sqrt|exp|ln|log|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|Abs|erf|erfi|Ci|Si|Ei|acot)\s*\([^()\n]+\)"
+    r"|(?<![A-Za-zÁÉÍÓÚáéíóúñÑ])(?:[μνφψ]|[fghPMNFG])\([^()\n]+\))"
 )
 _INTERVALO_PROSA = re.compile(
-    r"(?:(?<=\s)|^)[\[(]\s*[^()\[\]\n]*?(?:∞|-∞|\boo\b)[^()\[\]\n]*?,\s*[^()\[\]\n]+?[\])]"
+    r"(?:(?<=\s)|^)(?:"
+    r"[\[(]\s*[^()\[\]\n]*?(?:∞|-∞|\boo\b)[^()\[\]\n]*?,\s*[^()\[\]\n]+?[\])]"
+    r"|[\[(]\s*[^()\[\]\n]+?,\s*[^()\[\]\n]*?(?:∞|-∞|\boo\b)[^()\[\]\n]*?[\])]"
+    r")"
 )
+_INTEGRAL_PROSA = re.compile(r"∫\s*[^\n.;:]+?\s*d[xyuvXt]\b")
+_DERIV_PROSA = re.compile(r"(?:∂\s*[A-Za-z]\s*/\s*∂\s*[A-Za-z]|(?<![A-Za-z])d[yuv]\s*/\s*d[xXt](?![A-Za-z]))")
 _INICIO_ECUACION = re.compile(
     r"(?<![\w$])("
     r"∂\s*[A-Za-z]\s*/\s*∂\s*[A-Za-z]"
-    r"|dy\s*/\s*dx"
+    r"|d[yuv]\s*/\s*d[xXt]"
     r"|y\s*'{1,2}\s*(?:\(\s*x\s*\))?"
+    r"|\([^()\n]+\)"
     r"|[A-Za-zμνπαβγδθλφψ_][A-Za-z0-9_₀₁₂₃₄₅₆₇₈₉']*(?:\([^()]*\))?"
-    r")\s*="
+    r")\s*(?:=|!=|≠|<=|>=|≤|≥|[<>])"
 )
 
 
@@ -862,7 +1012,7 @@ def _fin_expresion(texto: str, inicio: int) -> int:
             else:
                 break
         elif profundidad == 0:
-            if caracter in "\n;:":
+            if caracter in "\n;:,":
                 break
             if caracter == "." and (
                 indice + 1 == len(texto) or not texto[indice + 1].isdigit()
@@ -873,8 +1023,14 @@ def _fin_expresion(texto: str, inicio: int) -> int:
                 while siguiente < len(texto) and texto[siguiente].isspace():
                     siguiente += 1
                 palabra = re.match(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]+", texto[siguiente:])
-                if palabra and _es_stopword_en_contexto(texto, siguiente, palabra.group(0)):
-                    break
+                if palabra is not None:
+                    word = palabra.group(0)
+                    despues = texto[siguiente + len(word) :]
+                    if not despues.startswith(("(", "'")):
+                        if _es_stopword_en_contexto(texto, siguiente, word):
+                            break
+                        if len(word) >= 3 and word.lower() not in _TOKENS_MATEMATICOS:
+                            break
                 if siguiente < len(texto) and texto[siguiente] == "$":
                     break
         indice += 1
@@ -890,17 +1046,38 @@ def _envolver_solo_prosa(texto: str, *, latexify: bool = True) -> str:
         return texto
     resultado: list[str] = []
     ultimo = 0
-    for encontrado in _INICIO_ECUACION.finditer(texto):
-        if encontrado.start() < ultimo:
+    # Una integral puede preceder al signo "=" que dispara la detección de
+    # ecuaciones (p. ej. "Integramos ∫ f(x) dx = 1.").  Se añade como punto de
+    # partida para envolver toda la expresión de una sola vez y no partir una
+    # fórmula ya delimitada en dos fragmentos.
+    candidatos = [
+        (encontrado.start(), 0, encontrado) for encontrado in _INICIO_ECUACION.finditer(texto)
+    ] + [
+        (encontrado.start(), 1, encontrado) for encontrado in _INTEGRAL_PROSA.finditer(texto)
+    ]
+    for posicion, es_integral, encontrado in sorted(candidatos, key=lambda item: item[:2]):
+        if posicion < ultimo:
             continue
-        inicio = max(ultimo, _inicio_expresion_en_prosa(texto, encontrado.start()))
+        inicio = (
+            posicion
+            if es_integral
+            else max(ultimo, _inicio_expresion_en_prosa(texto, posicion))
+        )
         fin = _fin_expresion(texto, inicio)
-        if fin <= encontrado.end():
+        if fin <= max(encontrado.end(), inicio):
             continue
         fragmento = texto[inicio:fin].strip()
-        marcas = ("+", "-", "−", "*", "/", "^", "(", ")", "·", "√")
-        if not any(marca in fragmento for marca in marcas) and not any(
-            caracter.isdigit() for caracter in fragmento
+        marcas = ("+", "-", "−", "*", "/", "^", "(", ")", "·", "√", "_", "'", "≠", "≤", "≥", "<", ">", "!")
+        es_par_corto = bool(
+            re.fullmatch(
+                r"[A-Za-zμνπαβγδθλφψ][0-9₀-₉']*\s*=\s*[+-]?[A-Za-z0-9μνπαβγδθλφψ]+",
+                fragmento,
+            )
+        )
+        if (
+            not es_par_corto
+            and not any(marca in fragmento for marca in marcas)
+            and not any(caracter.isdigit() for caracter in fragmento)
         ):
             continue
         envuelto = _codigo_a_latex(fragmento) if latexify else fragmento
@@ -910,12 +1087,18 @@ def _envolver_solo_prosa(texto: str, *, latexify: bool = True) -> str:
     resultado.append(texto[ultimo:])
     preparado = "".join(resultado)
 
-    for patron in (_FUNCION_LLAMADA, _INTERVALO_PROSA):
+    for patron in (_INTEGRAL_PROSA, _FUNCION_LLAMADA, _INTERVALO_PROSA, _DERIV_PROSA):
         resultado = []
         ultimo = 0
         for encontrado in patron.finditer(preparado):
             inicio = encontrado.start()
-            if inicio < ultimo or _dentro_de_matematicas(preparado, inicio):
+            # La comprobación en el inicio no basta: un patrón puede empezar en
+            # prosa y terminar dentro de una fórmula ya delimitada.
+            if (
+                inicio < ultimo
+                or _dentro_de_matematicas(preparado, inicio)
+                or preparado[: encontrado.end()].count("$") % 2 == 1
+            ):
                 continue
             fragmento = encontrado.group(0).strip()
             envuelto = _codigo_a_latex(fragmento) if latexify else fragmento

@@ -475,6 +475,10 @@ class App(tk.Tk):
             )
 
     # ------------------------------------------------------------- lifecycle
+    def destroy(self) -> None:
+        self._cancel_spinner()
+        super().destroy()
+
     def _wait_idle(self, timeout: float = 0.0) -> None:
         """Procesa eventos pendientes (útil para tests y scripts)."""
 

@@ -39,8 +39,6 @@ _PRIORITY = {
 }
 
 _EXPLICIT_PRIORITY = {
-    "clairaut": 5,
-    "lagrange": 6,
     "linear": 10,
     "separable": 11,
     "exact": 12,
@@ -53,6 +51,8 @@ _EXPLICIT_PRIORITY = {
     "bernoulli": 40,
     "homogeneous": 50,
     "reducible_homogeneous": 55,
+    "lagrange": 60,
+    "clairaut": 61,
     "riccati": 70,
 }
 
@@ -373,7 +373,7 @@ def riccati_coeffs(rhs: sp.Expr) -> tuple[sp.Expr, sp.Expr, sp.Expr] | None:
 def clairaut_or_lagrange(parsed: ParsedODE) -> tuple[str, sp.Expr, sp.Expr] | None:
     """Devuelve ``(tipo, phi(p), psi(p))`` para Clairaut o Lagrange."""
 
-    if parsed.F is None or parsed.kind != "implicit" or DY not in parsed.F.free_symbols:
+    if parsed.F is None or DY not in parsed.F.free_symbols:
         return None
     try:
         solutions = sp.solve(sp.Eq(parsed.F, 0), Y)
@@ -393,7 +393,7 @@ def clairaut_or_lagrange(parsed: ParsedODE) -> tuple[str, sp.Expr, sp.Expr] | No
         return None
     if sp.simplify(phi - DY) == 0:
         return "clairaut", sp.simplify(phi), psi
-    if psi.has(DY):
+    if psi.has(DY) or sp.simplify(phi - DY) != 0:
         return "lagrange", phi, psi
     return None
 

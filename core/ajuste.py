@@ -256,11 +256,11 @@ def cargar_datos(fuente: Any, *, nombre: str | None = None) -> DatosAjuste:
     subconjunto.columns = ["x", "y"]
     subconjunto = subconjunto.apply(pd.to_numeric, errors="coerce")
     subconjunto = subconjunto.replace([np.inf, -np.inf], np.nan).dropna()
+    subconjunto = subconjunto.sort_values("x").drop_duplicates("x")
     if len(subconjunto) < 5:
         raise DatosInvalidos(
-            "Se necesitan al menos 5 puntos válidos después de eliminar NaN."
+            "Se necesitan al menos 5 puntos válidos únicos en x después de eliminar NaN y duplicados."
         )
-    subconjunto = subconjunto.sort_values("x").drop_duplicates("x")
     x = subconjunto["x"].to_numpy(dtype=float)
     y = subconjunto["y"].to_numpy(dtype=float)
     if not (np.all(np.isfinite(x)) and np.all(np.isfinite(y))):
@@ -285,14 +285,22 @@ def _valoraciones_iniciales(
     min_y = float(np.min(y))
     rango = max(max_y - min_y, 1e-6)
     if modelo.id == "exponencial":
-        p0 = [0.1]
-        limites = ([1e-6], [10.0])
+        dx = float(x[-1] - x[0]) if len(x) >= 2 else 1.0
+        k_est = -0.1 if y[-1] < y0 else 0.1
+        if dx > 0 and y0 != 0 and y[-1] / y0 > 0:
+            k_est = float(np.clip(math.log(abs(float(y[-1]) / float(y0))) / dx, -9.0, 9.0))
+        p0 = [k_est]
+        limites = ([-10.0], [10.0])
     elif modelo.id == "logistico":
-        p0 = [0.2, max(max_y * 1.2, y0 + 0.1)]
-        limites = ([1e-6, max_y * 1.001], [10.0, max_y * 100 + 1.0])
+        k_low = max(max_y * 1.001, abs(max_y) * 0.1 + 1e-3, 1e-3)
+        k_high = max(k_low + 10.0, abs(max_y) * 100.0 + 1.0)
+        p0 = [0.2, max(max_y * 1.2, y0 + 0.1, k_low + 0.1)]
+        limites = ([1e-6, k_low], [10.0, k_high])
     elif modelo.id == "gompertz":
-        p0 = [0.2, max(max_y * 1.2, y0 + 0.1)]
-        limites = ([1e-6, max_y * 1.001], [10.0, max_y * 100 + 1.0])
+        k_low = max(max_y * 1.001, abs(max_y) * 0.1 + 1e-3, 1e-3)
+        k_high = max(k_low + 10.0, abs(max_y) * 100.0 + 1.0)
+        p0 = [0.2, max(max_y * 1.2, y0 + 0.1, k_low + 0.1)]
+        limites = ([1e-6, k_low], [10.0, k_high])
     else:  # newton
         temperatura_final = float(np.median(y[-max(2, len(y) // 5):]))
         p0 = [0.1, temperatura_final]
@@ -562,12 +570,16 @@ def predecir(
         return None
     rng = np.random.default_rng(semilla)
     nombres = list(base)
-    if resultado.covarianza is not None and resultado.covarianza.shape == (len(nombres), len(nombres)):
-        muestras_p = rng.multivariate_normal(
-            np.asarray([base[n] for n in nombres]),
-            resultado.covarianza,
-            size=int(n_muestras),
-        )
+    cov = resultado.covarianza
+    if cov is not None and cov.shape == (len(nombres), len(nombres)) and np.all(np.isfinite(cov)):
+        try:
+            muestras_p = rng.multivariate_normal(
+                np.asarray([base[n] for n in nombres]),
+                cov,
+                size=int(n_muestras),
+            )
+        except (np.linalg.LinAlgError, ValueError):
+            muestras_p = np.tile(np.asarray([base[n] for n in nombres]), (int(n_muestras), 1))
     else:
         muestras_p = np.tile(np.asarray([base[n] for n in nombres]), (int(n_muestras), 1))
     trayectorias: list[np.ndarray] = []

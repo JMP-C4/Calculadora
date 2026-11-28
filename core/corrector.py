@@ -15,7 +15,7 @@ import sympy as sp
 from sympy.parsing.sympy_parser import parse_expr
 
 from odecalc.parsing import parser as _motor_parser
-from odecalc.symbols import DY, X, Y
+from odecalc.symbols import C, DY, X, Y, lambdify_modules
 
 from core.parser import parsear
 from core.tipos import EntradaInvalida
@@ -264,9 +264,25 @@ def _verificar_contra_edo(
             return True, "La expresión satisface la EDO al sustituirla."
         return False, "Al sustituir esta expresión en la EDO el residuo no es cero."
 
-    # Relación implícita F(x,y)=C: se deriva implícitamente.
+    # Relación implícita F(x,y)=C: si C libre aparece mezclada (p. ej. y - C*exp(x) = 0),
+    # aislamos primero la constante arbitraria antes de derivar implícitamente.
     try:
         funcion = sp.simplify(linea.izquierda - linea.derecha)
+        constantes_libres = sorted(
+            (s for s in funcion.free_symbols if s not in {X, Y}),
+            key=lambda s: s.name,
+        )
+        nombres_constantes = {C.name, "C1"}
+        if len(constantes_libres) == 1 and constantes_libres[0].name in nombres_constantes:
+            c_sym = constantes_libres[0]
+            try:
+                despejadas = sp.solve(sp.Eq(funcion, 0), c_sym)
+            except Exception:
+                despejadas = []
+            for cand in despejadas:
+                if not cand.has(c_sym) and cand.has(Y):
+                    funcion = sp.simplify(cand)
+                    break
         f_x = sp.diff(funcion, X)
         f_y = sp.diff(funcion, Y)
     except Exception:
@@ -284,8 +300,8 @@ def _verificar_contra_edo(
         pass
     # Comprobación numérica de la derivada implícita.
     try:
-        f_rhs = sp.lambdify((X, Y), rhs, modules=["numpy"])
-        f_imp = sp.lambdify((X, Y), derivada_implicita, modules=["numpy"])
+        f_rhs = sp.lambdify((X, Y), rhs, modules=lambdify_modules())
+        f_imp = sp.lambdify((X, Y), derivada_implicita, modules=lambdify_modules())
         rng = np.random.default_rng(42)
         xs = rng.uniform(-2, 2, 12)
         ys = rng.uniform(0.2, 2.5, 12)

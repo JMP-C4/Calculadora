@@ -5,10 +5,15 @@ from __future__ import annotations
 import sympy as sp
 
 from odecalc.classify.classifier import exact_parts, is_exact
+from odecalc.methods.atomic_steps import (
+    StepBuilder,
+    describe_double_negative,
+    explain_derivative_rules,
+    explain_integration_rules,
+)
 from odecalc.methods.common import (
     format_differential_latex,
     implicit_solution,
-    make_step,
     safe_integrate,
     safe_simplify,
 )
@@ -39,60 +44,62 @@ def solve(parsed: ParsedODE, match: Match | None = None) -> tuple[Solution, list
     if not is_exact(m_expr, n_expr):
         raise ValueError("La ecuación no cumple la condición de exactitud.")
 
-    steps: list[Step] = [
-        make_step(
-            1,
-            "Escribir en forma diferencial",
-            format_differential_latex(m_expr, n_expr),
-            r"Se identifica $M(x,y)$ como el coeficiente de $dx$ y $N(x,y)$ como el "
-            r"coeficiente de $dy$.",
-            ascii_expr=f"({sp.sstr(m_expr)}) dx + ({sp.sstr(n_expr)}) dy = 0",
-        )
-    ]
+    builder = StepBuilder()
+    builder.add(
+        "Escribir en forma diferencial e identificar M y N",
+        format_differential_latex(m_expr, n_expr),
+        rf"Método: ecuación diferencial exacta. Escribimos $M(x,y)\,dx + N(x,y)\,dy = 0$ con "
+        rf"$M(x,y) = {sp.latex(m_expr)}$ y $N(x,y) = {sp.latex(n_expr)}$ (si el enunciado venía "
+        rf"como $y' = -M/N$, al despejar $N\,dy + M\,dx = 0$ el signo menos pasa multiplicando). "
+        r"Criterio de exactitud: $\frac{\partial M}{\partial y} = \frac{\partial N}{\partial x}$.",
+        ascii_expr=f"({sp.sstr(m_expr)}) dx + ({sp.sstr(n_expr)}) dy = 0",
+    )
 
     m_y = safe_simplify(sp.diff(m_expr, Y))
     n_x = safe_simplify(sp.diff(n_expr, X))
-    steps.append(
-        make_step(
-            2,
-            "Comprobar la exactitud",
-            rf"\frac{{\partial M}}{{\partial y}} = {sp.latex(m_y)}, \qquad "
-            rf"\frac{{\partial N}}{{\partial x}} = {sp.latex(n_x)}",
-            "La ecuación es exacta porque las derivadas cruzadas coinciden.",
-        )
-    )
-
-    potential = safe_integrate(m_expr, X)
-    steps.append(
-        make_step(
-            3,
-            "Integrar M respecto a x",
-            rf"F(x,y) = {sp.latex(potential)} + g(y)",
-            r"La constante de integración puede depender de $y$.",
-        )
+    builder.add(
+        "Comprobar derivadas parciales cruzadas",
+        rf"\frac{{\partial M}}{{\partial y}} = {sp.latex(m_y)}, \qquad "
+        rf"\frac{{\partial N}}{{\partial x}} = {sp.latex(n_x)}",
+        explain_derivative_rules(m_expr, Y, label="M")
+        + " "
+        + explain_derivative_rules(n_expr, X, label="N")
+        + " Como ambas coinciden, existe una función potencial $F(x,y)$ tal que $F_x = M$ y $F_y = N$.",
     )
 
     full_potential, potential, g_prime, g_y = exact_potential(m_expr, n_expr)
-    steps.append(
-        make_step(
-            4,
-            "Determinar g(y)",
-            rf"g'(y) = {sp.latex(g_prime)} \quad\Longrightarrow\quad "
-            rf"g(y) = {sp.latex(g_y)}",
-            r"Se deriva $F$ respecto a $y$, se iguala con $N$ y se integra.",
-        )
+    builder.add(
+        "Integrar M(x,y) respecto a x para construir F(x,y)",
+        rf"F(x,y) = \int \left({sp.latex(m_expr)}\right)\,dx + g(y) = {sp.latex(potential)} + g(y)",
+        explain_integration_rules(m_expr, X, potential)
+        + r" Al integrar respecto a $x$, cualquier función $g(y)$ que dependa sólo de $y$ tiene "
+        r"derivada parcial respecto a $x$ igual a $0$, por lo que reemplaza a la constante ordinaria.",
     )
 
-    steps.append(
-        make_step(
-            5,
-            "Escribir la solución general",
-            sp.latex(full_potential) + " = C",
-            "La solución de una EDO exacta es la familia de curvas de nivel "
-            r"$F(x,y) = C$.",
-        )
+    f_y_partial = safe_simplify(sp.diff(potential, Y))
+    dbl_neg = describe_double_negative(n_expr, f_y_partial) or ""
+    builder.add(
+        "Derivar F respecto a y e igualar con N(x,y)",
+        rf"\frac{{\partial F}}{{\partial y}} = {sp.latex(f_y_partial)} + g'(y) = {sp.latex(n_expr)} "
+        rf"\quad\Longrightarrow\quad g'(y) = {sp.latex(g_prime)}",
+        explain_derivative_rules(potential, Y, label=r"\int M\,dx")
+        + rf" Al igualar con $N = {sp.latex(n_expr)}$, los términos con $x$ se cancelan entre sí dejando "
+        rf"$g'(y) = N - \frac{{\partial}}{{\partial y}}\int M\,dx = {sp.latex(g_prime)}$. {dbl_neg}".strip(),
     )
-    return implicit_solution(full_potential), steps, []
+
+    builder.add(
+        "Integrar g'(y) respecto a y",
+        rf"g(y) = \int \left({sp.latex(g_prime)}\right)\,dy = {sp.latex(g_y)}",
+        explain_integration_rules(g_prime, Y, g_y),
+    )
+
+    builder.add(
+        "Escribir la familia implícita F(x,y) = C",
+        sp.latex(full_potential) + " = C",
+        r"La diferencial total es $dF = F_x\,dx + F_y\,dy = 0$, luego $F(x,y) = C$ es constante "
+        "a lo largo de cada curva solución.",
+    )
+    return implicit_solution(full_potential), builder.steps, []
 
 
 __all__ = ["solve"]

@@ -345,12 +345,17 @@ def instanciar_modelo(
 
     advertencias: list[str] = []
     if modelo.id == "resistencia_aire":
-        velocidad_terminal = math.sqrt(
-            valores["m"] * valores["g"] / valores["c"]
-        )
-        advertencias.append(
-            f"Velocidad terminal aproximada: {velocidad_terminal:.4g} m/s."
-        )
+        if valores["c"] > 0:
+            velocidad_terminal = math.sqrt(
+                valores["m"] * valores["g"] / valores["c"]
+            )
+            advertencias.append(
+                f"Velocidad terminal aproximada: {velocidad_terminal:.4g} m/s."
+            )
+        else:
+            advertencias.append(
+                "Sin resistencia del aire (c = 0): caída libre sin velocidad terminal finita."
+            )
 
     return ModeloInstanciado(
         id=modelo.id,

@@ -6,6 +6,7 @@ sin objetos SymPy ni arreglos NumPy.  Este módulo centraliza esa conversión.
 
 from __future__ import annotations
 
+import math
 from dataclasses import is_dataclass
 from typing import Any
 
@@ -16,14 +17,16 @@ from odecalc.models import SolveResult
 
 
 def _jsonable(value: Any) -> Any:
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if value is None or isinstance(value, (bool, int, str)):
         return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     if isinstance(value, sp.Expr):
         return sp.sstr(value)
     if isinstance(value, np.ndarray):
-        return value.tolist()
+        return _jsonable(value.tolist())
     if isinstance(value, np.generic):
-        return value.item()
+        return _jsonable(value.item())
     if isinstance(value, dict):
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set)):
@@ -87,7 +90,10 @@ def result_to_dict(result: SolveResult) -> dict[str, Any]:
         ],
         "numeric": _jsonable(result.numeric),
         "warnings": list(result.warnings),
-        "timing_ms": {key: round(float(value), 4) for key, value in result.timing_ms.items()},
+        "timing_ms": {
+            key: round(float(value), 4) if math.isfinite(float(value)) else 0.0
+            for key, value in result.timing_ms.items()
+        },
         "attempts": _jsonable(result.attempts),
         "error": result.error,
     }

@@ -9,7 +9,31 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import queue
+import threading
 from typing import Any, Callable
+
+_CTX_LOCK = threading.Lock()
+_FORKSERVER_PRELOADED = False
+
+
+def _mp_context() -> mp.context.BaseContext:
+    """Selecciona un contexto seguro sin ``fork`` desde procesos multi-hilo."""
+
+    global _FORKSERVER_PRELOADED
+    methods = mp.get_all_start_methods()
+    if "forkserver" in methods:
+        context = mp.get_context("forkserver")
+        with _CTX_LOCK:
+            if not _FORKSERVER_PRELOADED:
+                try:
+                    context.set_forkserver_preload(["odecalc.api"])
+                except Exception:  # pragma: no cover - si el servidor ya arrancó
+                    pass
+                _FORKSERVER_PRELOADED = True
+        return context
+    if "spawn" in methods:  # pragma: no cover - Windows/macOS
+        return mp.get_context("spawn")
+    return mp.get_context()  # pragma: no cover
 
 
 class TimeoutError(RuntimeError):
@@ -35,7 +59,7 @@ def run_with_timeout(
         raise ValueError("El tiempo límite debe ser positivo.")
 
     kwargs = kwargs or {}
-    context = mp.get_context("fork") if "fork" in mp.get_all_start_methods() else mp.get_context()
+    context = _mp_context()
     output_queue = context.Queue(maxsize=1)
     process = context.Process(
         target=_worker,

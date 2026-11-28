@@ -191,17 +191,18 @@ def _particular_values(conditions: Any) -> tuple[Any, Any] | None:
 
 def _add_identification(builder: _StepBuilder, rhs: sp.Expr, ode_type: str) -> None:
     names = {
-        "separable": "separable",
-        "linear": "lineal de primer orden",
-        "exact": "exacta",
-        "homogeneous": "homogénea",
-        "bernoulli": "de Bernoulli",
+        "separable": "separable (y' = g(x)·h(y))",
+        "linear": "lineal de primer orden (y' + P(x)y = Q(x))",
+        "exact": "exacta (∂M/∂y = ∂N/∂x)",
+        "homogeneous": "homogénea de grado cero (y = u x)",
+        "bernoulli": "de Bernoulli (y' + P(x)y = Q(x)yⁿ)",
         "otro": "no clasificada en un método elemental",
     }
     builder.add(
         "Identificar el tipo de EDO",
         sp.latex(sp.Eq(sp.Derivative(y, x), rhs)),
-        f"La ecuación se clasifica como EDO {names.get(ode_type, ode_type)}.",
+        f"La ecuación se clasifica como EDO {names.get(ode_type, ode_type)}; este diagnóstico determina la fórmula y el método a seguir.",
+        detail="Se verifica la estructura algebraica respecto a x, y y dy/dx.",
         ascii_expr=f"dy/dx = {sp.pretty(rhs)}",
     )
 
@@ -219,7 +220,7 @@ def _add_condition_step(
     builder.add(
         "Aplicar la condición inicial",
         sp.latex(sp.Eq(substituted, y0)),
-        "Se sustituye x = x₀ y y = y₀ en la solución general para determinar la constante.",
+        "Se sustituye x = x₀ y y = y₀ en la solución general para despejar C (respetando signos, +(-a) = -a y -(-a) = +a).",
         detail=f"Sustitución: x₀ = {x0}, y₀ = {y0}.",
         ascii_expr=f"{sp.pretty(substituted)} = {y0}",
     )

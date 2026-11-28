@@ -330,7 +330,7 @@ def _solve_for_constant(
     # Respaldo numérico: busca raíces reales de f(C) = 0 probando varios
     # puntos iniciales.  Sólo se usa cuando los métodos simbólicos fallan.
     try:
-        expression = sp.lambdify(constant, equation.lhs - equation.rhs, modules=["math"])
+        expression = sp.lambdify(constant, equation.lhs - equation.rhs, modules=_modules())
     except Exception:
         return []
     candidates = []

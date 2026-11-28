@@ -12,6 +12,7 @@ import sympy as sp
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 
+from odecalc.symbols import lambdify_modules
 from ui.export_manager import export_figure
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -45,9 +46,9 @@ def compute_direction_field_bounds(
     y_min = getattr(conditions, "y_min", None)
     y_max = getattr(conditions, "y_max", None)
 
-    if x_min is None or x_max is None:
+    if x_min is None or x_max is None or float(x_min) >= float(x_max):
         x_min, x_max = _DEFAULT_BOUNDS[0], _DEFAULT_BOUNDS[1]
-    if y_min is None or y_max is None:
+    if y_min is None or y_max is None or float(y_min) >= float(y_max):
         y_min, y_max = _DEFAULT_BOUNDS[2], _DEFAULT_BOUNDS[3]
     return float(x_min), float(x_max), float(y_min), float(y_max)
 
@@ -214,7 +215,7 @@ class PlotView(ttk.Frame):
         general = symbolic.general_solution
 
         if particular is not None:
-            curve = self._evaluate(sp.lambdify(x, particular.rhs, "numpy"), x_values)
+            curve = self._evaluate(sp.lambdify(x, particular.rhs, lambdify_modules()), x_values)
             self.axes.plot(x_values, curve, color="#1565c0", linewidth=2, label="Solución particular")
             return True
 
@@ -226,7 +227,7 @@ class PlotView(ttk.Frame):
             key=str,
         )
         if not constants:
-            curve = self._evaluate(sp.lambdify(x, general.rhs, "numpy"), x_values)
+            curve = self._evaluate(sp.lambdify(x, general.rhs, lambdify_modules()), x_values)
             self.axes.plot(x_values, curve, color="#1565c0", linewidth=2, label="Solución simbólica")
             return True
 
@@ -235,7 +236,7 @@ class PlotView(ttk.Frame):
         plotted = False
         for value, color in zip((-2, -1, 0, 1, 2), colors):
             expression = general.rhs.subs(constant, value)
-            curve = self._evaluate(sp.lambdify(x, expression, "numpy"), x_values)
+            curve = self._evaluate(sp.lambdify(x, expression, lambdify_modules()), x_values)
             if np.all(np.isnan(curve)):
                 continue
             self.axes.plot(
@@ -321,7 +322,7 @@ class PlotView(ttk.Frame):
         x_mesh, y_mesh = np.meshgrid(x_grid, y_grid)
 
         try:
-            function = sp.lambdify((x, y), rhs, "numpy")
+            function = sp.lambdify((x, y), rhs, lambdify_modules())
             with np.errstate(all="ignore"):
                 slopes = np.asarray(function(x_mesh, y_mesh), dtype=float)
             slopes = np.broadcast_to(slopes, x_mesh.shape).astype(float)
@@ -368,13 +369,17 @@ class PlotView(ttk.Frame):
         x_mesh, y_mesh = np.meshgrid(x_grid, y_grid)
 
         try:
-            function = sp.lambdify((x, y), rhs, "numpy")
+            function = sp.lambdify((x, y), rhs, lambdify_modules())
             with np.errstate(all="ignore"):
                 z_mesh = np.asarray(function(x_mesh, y_mesh), dtype=float)
             z_mesh = np.broadcast_to(z_mesh, x_mesh.shape).astype(float)
         except Exception:
             self._show_message("No se pudo evaluar f(x, y) para la superficie.")
             return
+        if not np.any(np.isfinite(z_mesh)):
+            self._show_message("La superficie no tiene valores finitos en el intervalo.")
+            return
+        z_mesh = np.where(np.isfinite(z_mesh), z_mesh, np.nan)
 
         self.last_surface_shape = z_mesh.shape
         surface = axes.plot_surface(

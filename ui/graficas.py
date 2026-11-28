@@ -10,7 +10,7 @@ import sympy as sp
 from plotly.subplots import make_subplots
 
 from odecalc.plotting import singular_curves, tangency_points
-from odecalc.symbols import X, Y
+from odecalc.symbols import X, Y, lambdify_modules
 
 _COLORES = (
     "#2563eb",
@@ -62,7 +62,7 @@ def _acabado(
 
 
 def _rhs_funcion(rhs: sp.Expr):
-    return sp.lambdify((X, Y), rhs, modules=["numpy"])
+    return sp.lambdify((X, Y), rhs, modules=lambdify_modules())
 
 
 def _rango_x(resultado) -> tuple[float, float]:
@@ -275,7 +275,7 @@ def figura_fase(
     figura = go.Figure()
     ys = np.linspace(float(y_min), float(y_max), 500)
     try:
-        funcion = sp.lambdify(Y, rhs, modules=["numpy"])
+        funcion = sp.lambdify(Y, rhs, modules=lambdify_modules())
         with np.errstate(all="ignore"):
             valores = np.asarray(funcion(ys), dtype=float)
         valores = np.broadcast_to(valores, ys.shape).astype(float)

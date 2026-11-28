@@ -31,7 +31,7 @@ from odecalc.plotting import (
     solution_curve,
     tangency_points,
 )
-from odecalc.symbols import X, Y
+from odecalc.symbols import X, Y, lambdify_modules
 
 
 class PlotMode(str, Enum):
@@ -601,7 +601,7 @@ class PlotPanel(ttk.Frame):
         y_values = np.linspace(y_min, y_max, grid_size)
         grid_x, grid_y = np.meshgrid(x_values, y_values)
         try:
-            function = sp.lambdify((X, Y), rhs, modules=["numpy"])
+            function = sp.lambdify((X, Y), rhs, modules=lambdify_modules())
             with np.errstate(all="ignore"):
                 z_values = np.asarray(function(grid_x, grid_y), dtype=float)
             z_values = np.broadcast_to(z_values, grid_x.shape).astype(float)

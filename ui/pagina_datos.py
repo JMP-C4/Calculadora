@@ -55,7 +55,7 @@ def _cargar_fuente(archivo) -> None:
         mensaje_error(
             str(exc),
             "El archivo debe tener una columna de tiempo y otra de valor, "
-            "con al menos cuatro filas numéricas.",
+            "con al menos cinco filas numéricas distintas en x.",
         )
         return
     except Exception:
@@ -175,7 +175,7 @@ def render(*, cabecera: bool = True) -> None:
                 """
 - Una columna de tiempo (`tiempo`, `t`, `x`, `fecha`…).
 - Una columna de valor (`valor`, `poblacion`, `temperatura`, `y`…).
-- Al menos 4 filas numéricas; los `NaN` se descartan.
+- Al menos 5 puntos numéricos únicos en tiempo; los `NaN` se descartan.
 - También se aceptan Excel (`.xlsx`) con el mismo esquema.
                 """
             )

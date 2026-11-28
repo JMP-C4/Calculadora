@@ -150,7 +150,8 @@ _ATTRIBUTE_ACCESS = re.compile(r"\.\s*[A-Za-z_]")
 _UNDERSCORE_NAMES = re.compile(r"\b\w*_\w*\b")
 _DANGEROUS_WORDS = re.compile(
     r"\b(import|eval|exec|compile|globals|locals|getattr|setattr|delattr|"
-    r"lambda|open|class|def|return|yield|raise|try|except|with|as|from)\b",
+    r"open|class|def|return|yield|raise|try|except|with|as|from)\b"
+    r"|\blambda\b(?=\s*(?:[A-Za-z_][A-Za-z0-9_,\s]*:|\s*:))",
     re.IGNORECASE,
 )
 

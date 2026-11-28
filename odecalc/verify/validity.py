@@ -126,6 +126,15 @@ def _denominator_zero_candidates(expr: sp.Expr) -> list[sp.Expr]:
     return candidates
 
 
+def _denominator_can_vanish(denominator: sp.Expr) -> bool:
+    """Evita falsos positivos en denominadores estrictamente positivos como ``exp(x**2)``."""
+
+    if denominator in (0, 1) or not denominator.has(X, Y):
+        return False
+    factors = sp.Mul.make_args(denominator)
+    return any(not isinstance(factor, sp.exp) and factor.has(X, Y) for factor in factors)
+
+
 def analyze_validity(
     rhs: sp.Expr | None,
     solution: Solution | None,
@@ -142,7 +151,7 @@ def analyze_validity(
     if rhs is not None:
         try:
             rhs_denominator = sp.fraction(sp.together(rhs))[1]
-            if rhs_denominator not in (1, 0):
+            if _denominator_can_vanish(rhs_denominator):
                 notes.append(
                     "f(x,y) contiene denominadores; la solución puede dejar de "
                     "existir donde éstos se anulan."

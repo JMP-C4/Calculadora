@@ -9,6 +9,8 @@ import numpy as np
 import sympy as sp
 from scipy.integrate import solve_ivp
 
+from odecalc.symbols import lambdify_modules
+
 x = sp.Symbol("x", real=True)
 y = sp.Function("y")(x)
 
@@ -90,7 +92,7 @@ def solve_numeric(
     n_points = max(int(n_points), 2)
 
     try:
-        numeric_rhs = sp.lambdify((x, y), rhs, modules="numpy")
+        numeric_rhs = sp.lambdify((x, y), rhs, modules=lambdify_modules())
     except Exception as exc:
         return _failure(f"No se pudo preparar la función f(x, y): {exc}")
 

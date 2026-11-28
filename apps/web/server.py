@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import threading
 import time
 from collections import defaultdict, deque
 from http import HTTPStatus
@@ -71,6 +73,8 @@ def _validated(payload: dict[str, Any]) -> dict[str, Any]:
             number = float(value)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"El campo '{name}' debe ser numérico.") from exc
+        if not math.isfinite(number):
+            raise ValueError(f"El campo '{name}' debe ser un número finito.")
         return number
 
     x0 = optional_float("x0")
@@ -80,6 +84,8 @@ def _validated(payload: dict[str, Any]) -> dict[str, Any]:
     timeout_value = optional_float("timeout")
     x_min = -5.0 if x_min_value is None else x_min_value
     x_max = 5.0 if x_max_value is None else x_max_value
+    if x_min >= x_max:
+        raise ValueError("El intervalo no es válido: x_min debe ser menor que x_max.")
     timeout = min(
         max(DEFAULT_TIMEOUT if timeout_value is None else timeout_value, 0.1),
         MAX_TIMEOUT,
@@ -145,16 +151,24 @@ class _RateLimiter:
         self.limit = limit
         self.window = window
         self._events: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
 
     def allow(self, key: str) -> bool:
         now = time.monotonic()
-        events = self._events[key]
-        while events and now - events[0] > self.window:
-            events.popleft()
-        if len(events) >= self.limit:
-            return False
-        events.append(now)
-        return True
+        with self._lock:
+            if len(self._events) > 1024:
+                stale = [
+                    k for k, q in self._events.items() if not q or now - q[-1] > self.window
+                ]
+                for k in stale:
+                    del self._events[k]
+            events = self._events[key]
+            while events and now - events[0] > self.window:
+                events.popleft()
+            if len(events) >= self.limit:
+                return False
+            events.append(now)
+            return True
 
 
 _LIMITER = _RateLimiter()
@@ -204,6 +218,13 @@ class ODEHandler(BaseHTTPRequestHandler):
         self._send_file(candidate, content_type)
         return True
 
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
     def do_GET(self) -> None:  # noqa: N802
         route = urlparse(self.path).path
         if route in ("/", "/index.html"):
@@ -240,10 +261,16 @@ class ODEHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if length <= 0 or length > MAX_REQUEST_BYTES:
+        if length <= 0:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "Cuerpo vacío."},
+            )
+            return
+        if length > MAX_REQUEST_BYTES:
             self._send_json(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                {"error": "Cuerpo vacío o demasiado grande."},
+                {"error": "Cuerpo demasiado grande."},
             )
             return
         raw = self.rfile.read(length)

@@ -26,7 +26,7 @@ from odecalc.plotting import (
     rhs_from_result,
     solution_curve,
 )
-from odecalc.symbols import X, Y
+from odecalc.symbols import X, Y, lambdify_modules
 
 PLOT_MODES: dict[str, str] = {
     "solution": "Solución y(x)",
@@ -493,7 +493,7 @@ def _build_surface(
     y_values = np.linspace(y_min, y_max, grid_size)
     grid_x, grid_y = np.meshgrid(x_values, y_values)
     try:
-        function = sp.lambdify((X, Y), rhs, modules=["numpy"])
+        function = sp.lambdify((X, Y), rhs, modules=lambdify_modules())
         with np.errstate(all="ignore"):
             z_values = np.asarray(function(grid_x, grid_y), dtype=float)
         z_values = np.broadcast_to(z_values, grid_x.shape).astype(float)

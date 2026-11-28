@@ -1,4 +1,4 @@
-"""Pruebas de regresión que reproducen los hallazgos de REPORTE_AUDITORIA_TECNICA.md.
+"""Pruebas de regresión que reproducen hallazgos detectados en la auditoría técnica.
 
 Cada prueba marcada con ``xfail(strict=True)`` documenta un defecto verificado
 que debe pasar a verde cuando se aplique su corrección correspondiente.
@@ -47,7 +47,6 @@ def test_c03_solve_degrades_to_numeric_on_symbolic_timeout() -> None:
     assert result.numeric.success
 
 
-@pytest.mark.xfail(strict=True, reason="C-04: exponencial fuerza k >= 1e-6 y falla en decaimiento")
 def test_c04_exponential_fit_supports_decay() -> None:
     datos = cargar_ejemplo("decaimiento")
     resultado = ajustar(datos, modelos=["exponencial"])[0]
@@ -56,20 +55,17 @@ def test_c04_exponential_fit_supports_decay() -> None:
     assert resultado.r2 > 0.95
 
 
-@pytest.mark.xfail(strict=True, reason="C-04: cargar_datos valida len >= 5 antes de drop_duplicates")
 def test_c04_cargar_datos_validates_unique_x_count() -> None:
     tabla = pd.DataFrame({"x": [0.0, 0.0, 1.0, 1.0, 2.0], "y": [1.0, 2.0, 3.0, 4.0, 5.0]})
     with pytest.raises(DatosInvalidos):
         cargar_datos(tabla)
 
 
-@pytest.mark.xfail(strict=True, reason="C-05: resistencia_aire con c=0.0 lanza ZeroDivisionError")
 def test_c05_air_resistance_zero_drag_does_not_crash() -> None:
     instancia = instanciar_modelo("resistencia_aire", parametros={"c": 0.0})
     assert instancia.parametros["c"] == 0.0
 
 
-@pytest.mark.xfail(strict=True, reason="C-05: lambda es bloqueada por _DANGEROUS_WORDS")
 def test_c05_decay_model_parameter_accepted_with_parameters_parser() -> None:
     ecuacion = parsear_con_parametros("y' = -lambda*y")
     assert "lambda" in ecuacion.parametros
@@ -92,7 +88,6 @@ def test_a03_validity_checks_even_root_domain() -> None:
     assert result.validity.interval != "(-∞, ∞) en ausencia de otras singularidades"
 
 
-@pytest.mark.xfail(strict=True, reason="A-05: clairaut_or_lagrange exige psi.has(DY) para Lagrange")
 def test_a05_lagrange_with_constant_psi_is_classified() -> None:
     parsed = parse_ode("y = 2*x*y' + 1")
     detected = clairaut_or_lagrange(parsed)
@@ -100,7 +95,6 @@ def test_a05_lagrange_with_constant_psi_is_classified() -> None:
     assert detected[0] == "lagrange"
 
 
-@pytest.mark.xfail(strict=True, reason="A-07: _validated acepta NaN y x_min >= x_max")
 @pytest.mark.parametrize(
     "payload",
     [
@@ -113,13 +107,11 @@ def test_a07_web_server_rejects_nonfinite_or_inverted_bounds(payload: dict) -> N
         _validated(payload)
 
 
-@pytest.mark.xfail(strict=True, reason="A-10: corrector rechaza y - C*exp(x) = 0 por C libre")
 def test_a10_corrector_accepts_rearranged_general_solution() -> None:
     resultado = corregir("y - C*exp(x) = 0", "y' = y")
     assert resultado.correcto
 
 
-@pytest.mark.xfail(strict=True, reason="A-11: datos_isoclinas no hace broadcast para rhs constante")
 def test_a11_isoclines_constant_rhs_returns_2d_grid() -> None:
     datos = datos_isoclinas(parse_ode("y' = 2").rhs, n=20)
     assert datos.z.shape == (20, 20)
@@ -144,3 +136,65 @@ def test_m03_explosion_forward_detected_when_y0_negative_and_rhs_positive() -> N
     assert explota
     assert direccion == "hacia adelante"
     assert tiempo is not None and tiempo > 0.0
+
+
+def test_code_review_dsolve_serialization_and_validity_fixes() -> None:
+    import json
+
+    import sympy as sp
+
+    from apps.web.server import ODEHandler, _RateLimiter
+    from core.cualitativo import _raices_reales
+    from odecalc.methods import dsolve_fallback
+    from odecalc.models import NumericResult, SolveResult
+    from odecalc.serialization import result_to_dict
+    from odecalc.symbols import Y
+
+    # A-04: dsolve_fallback conserva los términos no constantes en rhs.
+    sol, _, _ = dsolve_fallback.solve(parse_ode("y = x*y' + 1"))
+    assert sol.is_explicit or sol.is_implicit
+
+    # Evitar bloqueo en SymPy lie_group para factorable sin hint cerrado, preservando factorables reales.
+    with pytest.raises(ValueError, match="bloqueo"):
+        dsolve_fallback.solve(parse_ode("y = x*y'**2 + y'"))
+    sol_fact, _, _ = dsolve_fallback.solve(parse_ode("(y' - x)*(y' - y) = 0"))
+    assert sol_fact.is_explicit or sol_fact.is_implicit
+
+    # A-01: serialización JSON no produce NaN/Infinity inválidos.
+    dirty = SolveResult(
+        input_text="y' = y",
+        numeric=NumericResult(
+            x_arr=None,
+            y_arr=None,
+            success=False,
+            message="ok",
+            error_estimate=float("nan"),
+        ),
+        timing_ms={"total": float("inf")},
+    )
+    dumped = json.dumps(result_to_dict(dirty), allow_nan=False)
+    assert "NaN" not in dumped
+
+    # Falsos positivos de denominadores en exp(-x^2): no debe decir contiene denominadores.
+    res_exp = solve("y' = exp(-x**2)", compute_numeric=False)
+    assert not any("contiene denominadores" in n for n in res_exp.validity.notes)
+
+    # A-11: raíces trascendentes en equilibrio cualitativo.
+    roots = _raices_reales(sp.exp(Y) - 2 * Y - 2)
+    assert any(abs(r - 1.6783) < 1e-2 for r in roots)
+
+    # A-07: RateLimiter thread-safe y método existente.
+    limiter = _RateLimiter(limit=2, window=60.0)
+    assert limiter.allow("127.0.0.1")
+    assert limiter.allow("127.0.0.1")
+    assert not limiter.allow("127.0.0.1")
+    assert hasattr(ODEHandler, "do_OPTIONS")
+
+    # C-06: timeout evita fork() inseguro en entornos multi-hilo.
+    import multiprocessing as mp
+
+    from odecalc.timeout import _mp_context
+
+    if "forkserver" in mp.get_all_start_methods():
+        assert _mp_context().get_start_method() == "forkserver"
+

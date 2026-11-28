@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import sympy as sp
 
-from odecalc.symbols import X
+from odecalc.symbols import X, lambdify_modules
 
 from core.convergencia import benchmark, estudio_convergencia, validar_orden
 from core.parser import parsear
@@ -64,7 +64,7 @@ def _figura_metodos(resultados, exacto: sp.Expr | None) -> go.Figure:
         )
     if exacto is not None:
         try:
-            funcion = sp.lambdify(X, exacto, modules=["numpy"])
+            funcion = sp.lambdify(X, exacto, modules=lambdify_modules())
             xs = np.linspace(
                 float(min(item.x[0] for item in resultados if item.exito)),
                 float(max(item.x[-1] for item in resultados if item.exito)),

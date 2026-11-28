@@ -162,9 +162,17 @@ def parsear_con_parametros(texto: str) -> Ecuacion:
     )
     local_dict: dict[str, object] = dict(_motor_parser._ALLOWED_NAMES)
     simbolos = {nombre: sp.Symbol(nombre, real=True) for nombre in parametros}
+    # ``lambda`` es palabra clave en Python: se sustituye temporalmente por un
+    # identificador seguro conservando el símbolo real ``Symbol('lambda')``.
+    lambda_alias = "_param_lambda_alias"
+    if "lambda" in simbolos:
+        local_dict[lambda_alias] = simbolos["lambda"]
+        preparado_parse = re.sub(r"\blambda\b", lambda_alias, preparado)
+    else:
+        preparado_parse = preparado
     local_dict.update(simbolos)
 
-    izquierda, derecha = (parte.strip() for parte in preparado.split("=", 1))
+    izquierda, derecha = (parte.strip() for parte in preparado_parse.split("=", 1))
     if not izquierda or not derecha:
         raise EntradaInvalida("Los dos lados de la ecuación deben estar completos.")
     try:

@@ -428,7 +428,7 @@ def test_real_solve_updates_interface(window: tk.Tk) -> None:
         timeout=60.0,
     )
     assert "verificada" in window.status.cget("text").lower()
-    assert "Verificación: ok" in window.summary.get("1.0", "end")
+    assert "Verificación: Verificada (residuo 0)" in window.summary.get("1.0", "end")
     assert window.steps.get("1.0", "end").strip()
     assert window.plot_panel is not None
     assert window.plot_panel.axes.lines

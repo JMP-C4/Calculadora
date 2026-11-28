@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import sympy as sp
 
-from odecalc.symbols import X, Y
+from odecalc.symbols import X, Y, lambdify_modules
 
 from core.tipos import (
     Equilibrio,
@@ -65,6 +65,37 @@ def _raices_reales(expr: sp.Expr) -> list[float]:
             candidatas = list(sp.nroots(polinomio))
         except Exception:
             candidatas = []
+    if not candidatas:
+        # Respaldo numérico (A-11) para ecuaciones trascendentes sin forma cerrada.
+        # ``nsolve`` puede converger hacia infinitésimos (p. ej. exp(y) -> 0 en
+        # y -> -oo) y devolver un número finito que no es raíz.  Se exige
+        # que el paso de Newton en el punto devuelto sea despreciable: para una
+        # raíz simple f/f' ~ 0, mientras que en esos falsos positivos f/f' ~ 1.
+        try:
+            derivada = sp.diff(expr, Y)
+        except Exception:
+            derivada = None
+        for semilla in (-8.0, -4.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 4.0, 8.0):
+            if derivada is None:
+                break
+            try:
+                val = complex(sp.nsolve(expr, Y, semilla))
+                if abs(val.imag) > 1e-8 or not math.isfinite(val.real):
+                    continue
+                f_val = complex(sp.N(expr.subs(Y, val.real)))
+                df_val = complex(sp.N(derivada.subs(Y, val.real)))
+                if (
+                    not math.isfinite(abs(f_val))
+                    or not math.isfinite(abs(df_val))
+                    or abs(df_val) < 1e-14
+                ):
+                    continue
+                nuevo = sp.N(val.real - f_val.real / df_val.real)
+                if abs(float(nuevo) - val.real) > 1e-6 * max(1.0, abs(val.real)):
+                    continue
+                candidatas.append(sp.Float(val.real))
+            except Exception:
+                continue
     for candidata in candidatas:
         try:
             valor = complex(sp.N(candidata))
@@ -153,7 +184,7 @@ def linea_fase(
 
     if not es_autonoma(rhs):
         raise ValueError("La línea de fase sólo está definida para EDOs autónomas.")
-    f = sp.lambdify(Y, rhs, modules=["numpy"])
+    f = sp.lambdify(Y, rhs, modules=lambdify_modules())
     ys = np.linspace(float(y_min), float(y_max), max(int(n), 2))
     with np.errstate(all="ignore"):
         valores = np.asarray(f(ys), dtype=float)
@@ -178,9 +209,11 @@ def datos_isoclinas(
     ys = np.linspace(float(y_min), float(y_max), max(int(n), 2))
     xx, yy = np.meshgrid(xs, ys)
     try:
-        f = sp.lambdify((X, Y), rhs, modules=["numpy"])
+        f = sp.lambdify((X, Y), rhs, modules=lambdify_modules())
         with np.errstate(all="ignore"):
             zz = np.asarray(f(xx, yy), dtype=float)
+        if zz.shape != xx.shape:
+            zz = np.broadcast_to(zz, xx.shape).astype(float)
     except Exception:
         zz = np.full_like(xx, np.nan)
 
@@ -197,7 +230,7 @@ def datos_isoclinas(
             if rama.free_symbols - {X}:
                 continue
             try:
-                funcion = sp.lambdify(X, rama, modules=["numpy"])
+                funcion = sp.lambdify(X, rama, modules=lambdify_modules())
                 with np.errstate(all="ignore"):
                     valores_y = np.asarray(funcion(xs), dtype=float)
                 if valores_y.shape != xs.shape:

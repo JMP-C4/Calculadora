@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import sympy as sp
 
+from odecalc.methods.atomic_steps import StepBuilder, explain_derivative_rules
 from odecalc.methods.common import (
     explicit_solution,
     latex_with_prime,
-    make_step,
     safe_simplify,
 )
 from odecalc.models import Match, Solution, Step
@@ -24,30 +24,31 @@ def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
         )
 
     general = safe_simplify(C * X + psi.subs(DY, C))
-    steps: list[Step] = [
-        make_step(
-            1,
-            "Identificar la ecuación de Clairaut",
-            latex_with_prime(sp.Eq(Y, X * DY + psi)),
-            rf"Tiene la forma $y = x y' + f(y')$, con $f(p) = {sp.latex(psi.subs(DY, P))}$.",
-        ),
-        make_step(
-            2,
-            "Derivar respecto a x",
-            r"y' = y' + \left(x + f'(y')\right)y''",
-            "Al derivar ambos lados y simplificar queda "
-            r"$\left(x + f'(y')\right) y'' = 0$.",
-        ),
-        make_step(
-            3,
-            "Caso y'' = 0",
-            sp.latex(sp.Eq(Y, general)),
-            r"Si $y'' = 0$, entonces $y' = C$ es constante y se obtiene la familia "
-            r"de rectas $y = Cx + f(C)$.",
-        ),
-    ]
+    builder = StepBuilder()
+    builder.add(
+        "Identificar la ecuación de Clairaut y su estructura",
+        latex_with_prime(sp.Eq(Y, X * DY + psi)),
+        rf"¿Por qué este método? Tiene la forma exacta $y = x y' + \psi(y')$ con "
+        rf"$\psi(p) = {sp.latex(psi.subs(DY, P))}$. Al derivar respecto a $x$, un factor "
+        r"$y'$ se cancela en ambos miembros dando lugar a una familia general de rectas y a "
+        r"una posible envolvente singular.",
+    )
+    builder.add(
+        "Derivar respecto a x (regla del producto y cadena) y factorizar",
+        r"y' = y' + x\,y'' + \psi'(y')\,y'' \quad\Longrightarrow\quad \left(x + \psi'(y')\right)y'' = 0",
+        r"Derivamos $x y'$ con $(uv)' = y' + x y''$ y $\psi(y')$ con regla de la cadena "
+        r"$\psi'(y')y''$. Restamos $y'$ a ambos lados (se cancela $y' - y' = 0$) y sacamos "
+        r"factor común $y''$. Un producto es $0$ cuando alguno de sus dos factores se anula.",
+    )
+    builder.add(
+        "Caso 1: y'' = 0 (familia general de rectas)",
+        sp.latex(sp.Eq(Y, general)),
+        r"Si $y'' = 0$, integrando $\int 0\,dx = C$ queda $y' = C$ constante; sustituyendo $y' = C$ en "
+        r"la ecuación original resulta la familia $y = Cx + \psi(C)$.",
+    )
 
     singular: list[Solution] = []
+    derivative = sp.Integer(0)
     try:
         derivative = safe_simplify(sp.diff(psi, DY))
         for p_value in sp.solve(sp.Eq(X + derivative, 0), DY):
@@ -67,17 +68,18 @@ def solve(match: Match) -> tuple[Solution, list[Step], list[Solution]]:
         pass
 
     if singular:
-        steps.append(
-            make_step(
-                4,
-                "Caso x + f'(y') = 0",
-                sp.latex(sp.Eq(Y, singular[0].expr)),
-                r"Al eliminar $y'$ entre $x + f'(y') = 0$ y la ecuación original se "
-                "obtiene la solución singular (envolvente).",
-            )
+        psi_p = psi.subs(DY, P)
+        eq_p = sp.Eq(X + derivative.subs(DY, P), 0)
+        builder.add(
+            "Caso 2: x + f'(y') = 0 (solución singular / envolvente)",
+            rf"{sp.latex(eq_p)} \quad\Longrightarrow\quad {sp.latex(sp.Eq(Y, singular[0].expr))}",
+            explain_derivative_rules(psi_p, P, label=r"\psi(p)")
+            + r" Igualamos $x + \psi'(p) = 0$ para despejar el parámetro $p(x)$ en función de $x$ "
+            r"(cambiando signo al transponer) y sustituimos en $y = xp + \psi(p)$ para obtener "
+            "la curva envolvente tangente a toda la familia.",
         )
 
-    return explicit_solution(general), steps, singular
+    return explicit_solution(general), builder.steps, singular
 
 
 __all__ = ["solve"]

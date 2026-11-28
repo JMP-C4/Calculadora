@@ -5,12 +5,16 @@ from __future__ import annotations
 import sympy as sp
 
 from odecalc.classify.classifier import substitution_linear_combo
+from odecalc.methods.atomic_steps import (
+    StepBuilder,
+    add_product_atomic_steps,
+    explain_integration_rules,
+)
 from odecalc.methods.common import (
     _signed_term_latex,
     explicit_solution,
     format_linear_combo_latex,
     implicit_solution,
-    make_step,
     safe_integrate,
     safe_solve_expr,
     safe_simplify,
@@ -37,59 +41,54 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
     b_term = _signed_term_latex(b, g_arg, include_plus=(a != 0))
     rhs_u = f"{sp.latex(a)}{b_term}" if a != 0 else b_term.lstrip()
 
-    steps: list[Step] = [
-        make_step(
-            1,
-            "Identificar la sustitución",
-            f"u = {format_linear_combo_latex(a, b)}",
-            r"El lado derecho depende de $x$ e $y$ únicamente a través de la "
-            rf"combinación $u$. Entonces $y' = G(u)$ con $G(u) = {g_tex}$.",
-        ),
-        make_step(
-            2,
-            "Derivar la sustitución",
-            r"\frac{du}{dx} = a + b\,\frac{dy}{dx}",
-            r"Se deriva $u = ax + by$ respecto a $x$.",
-        ),
-        make_step(
-            3,
-            "Transformar la EDO",
-            rf"\frac{{du}}{{dx}} = {rhs_u}",
-            r"Al sustituir $y' = G(u)$ se obtiene una EDO separable en $u$ y $x$.",
-        ),
-    ]
-
-    denominator = safe_simplify(a + b * g_u)
-    if denominator == 0:
-        steps.append(
-            make_step(
-                4,
-                "Integrar",
-                r"u = C \quad\Longrightarrow\quad y = \frac{C - ax}{b}",
-                r"Si $u' = 0$, $u$ es constante y la solución es una recta.",
-            )
-        )
-        return explicit_solution((C - a * X) / b), steps, []
-
-    steps.append(
-        make_step(
-            4,
-            "Separar variables",
-            rf"\frac{{du}}{{{sp.latex(denominator)}}} = dx",
-            r"La ecuación es separable: todo depende de $u$ a la izquierda y de $x$ "
-            "a la derecha.",
-        )
+    builder = StepBuilder()
+    builder.add(
+        "Identificar la sustitución lineal u = a x + b y",
+        f"u = {format_linear_combo_latex(a, b)}",
+        rf"¿Por qué este método? $x$ e $y$ sólo aparecen combinados en la expresión lineal "
+        rf"$u = {format_linear_combo_latex(a, b)}$, de modo que $y' = G(u) = {g_tex}$.",
+    )
+    du_rhs_term = _signed_term_latex(b, r"\frac{dy}{dx}", include_plus=(a != 0))
+    du_lhs_expr = rf"{sp.latex(a)}{du_rhs_term}" if a != 0 else du_rhs_term.lstrip()
+    builder.add(
+        "Derivar u respecto a x (regla de la suma y cadena)",
+        rf"\frac{{du}}{{dx}} = {du_lhs_expr}",
+        rf"Derivamos $u = {format_linear_combo_latex(a, b)}$ respecto a $x$: $\frac{{d}}{{dx}}(ax) = a$ "
+        r"y $\frac{d}{dx}(by) = b\frac{dy}{dx}$.",
     )
 
-    integral = safe_integrate(1 / denominator, U)
-    relation = safe_simplify(integral - X - C)
-    steps.append(
-        make_step(
-            5,
-            "Integrar",
-            f"{sp.latex(integral)} = x + C",
-            r"Se integra respecto a $u$ y respecto a $x$.",
+    denominator = safe_simplify(a + b * g_u)
+    add_product_atomic_steps(
+        builder,
+        b,
+        g_u,
+        safe_simplify(b * g_u),
+        title="Sustituir dy/dx = G(u) y calcular b·G(u)",
+        lhs_latex=rf"\frac{{du}}{{dx}} - \left({sp.latex(a)}\right)",
+        intro_explanation=rf"Sustituimos $\frac{{dy}}{{dx}} = {g_tex}$ en $\frac{{du}}{{dx}} = a + b\,y'$, obteniendo $\frac{{du}}{{dx}} = {rhs_u}$.",
+    )
+
+    if denominator == 0:
+        builder.add(
+            "Integrar la pendiente nula du/dx = 0",
+            r"u = C \quad\Longrightarrow\quad y = \frac{C - ax}{b}",
+            r"Como $a + b G(u) = 0$, $u$ es constante y la solución es una recta.",
         )
+        return explicit_solution((C - a * X) / b), builder.steps, []
+
+    inv_den = safe_simplify(1 / denominator)
+    builder.add(
+        "Separar variables en u y x",
+        rf"\left({sp.latex(inv_den)}\right)\,du = dx",
+        r"Dividimos entre $a + b G(u)$ y multiplicamos por $dx$ para separar $u$ y $x$.",
+    )
+
+    integral = safe_integrate(inv_den, U)
+    relation = safe_simplify(integral - X - C)
+    builder.add(
+        "Integrar ambos miembros",
+        f"{sp.latex(integral)} = x + C",
+        explain_integration_rules(inv_den, U, integral) + r" Además $\int 1\,dx = x + C$.",
     )
 
     explicit_u = next(
@@ -102,26 +101,21 @@ def solve(rhs: sp.Expr, match: Match | None = None) -> tuple[Solution, list[Step
     )
     if explicit_u is not None:
         solution = safe_simplify((explicit_u - a * X) / b)
-        steps.append(
-            make_step(
-                6,
-                "Volver a y",
-                sp.latex(sp.Eq(Y, solution)),
-                r"Se sustituye $u = ax + by$ y se despeja $y$.",
-            )
+        builder.add(
+            "Deshacer la sustitución u = a x + b y y despejar y",
+            sp.latex(sp.Eq(Y, solution)),
+            rf"Reemplazamos $u = {format_linear_combo_latex(a, b)}$, pasamos ${sp.latex(a * X)}$ con signo "
+            rf"cambiado al otro lado y dividimos entre $b = {sp.latex(b)}$.",
         )
-        return explicit_solution(solution), steps, []
+        return explicit_solution(solution), builder.steps, []
 
     potential = safe_simplify(integral.subs(U, a * X + b * Y) - X)
-    steps.append(
-        make_step(
-            6,
-            "Escribir la solución implícita",
-            sp.latex(potential) + " = C",
-            r"No se pudo despejar $u$; se conserva la relación implícita.",
-        )
+    builder.add(
+        "Escribir la solución implícita",
+        sp.latex(potential) + " = C",
+        r"Sustituimos $u = ax + by$; como no fue posible aislar $y$, conservamos la solución implícita.",
     )
-    return implicit_solution(potential), steps, []
+    return implicit_solution(potential), builder.steps, []
 
 
 __all__ = ["solve"]

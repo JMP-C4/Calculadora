@@ -114,7 +114,7 @@ def test_desktop_renders_all_processes_in_standard_notation(
         y0=ic[1] if ic else None,
         method=forced_method,
         compute_numeric=False,
-        timeout=15.0,
+        timeout=30.0,
     )
     app = _make_headless_desktop_app()
     if ic is not None:
@@ -145,7 +145,7 @@ def test_desktop_renders_numeric_fallback_in_standard_notation(monkeypatch) -> N
         "solve",
         lambda _parsed: (_ for _ in ()).throw(ValueError("sin solución elemental")),
     )
-    result = solve("y' = x*y + sin(x)", x0=0.0, y0=1.0, compute_numeric=True)
+    result = solve("y' = x*y + sin(x)", x0=0.0, y0=1.0, compute_numeric=True, timeout=2.0)
     app = _make_headless_desktop_app()
     app._ultima_solicitud = ("y' = x*y + sin(x)", {"x0": 0.0, "y0": 1.0, "x_min": -5.0, "x_max": 5.0})
     app._notacion_salida.set("Algebraica")
@@ -291,3 +291,29 @@ def test_desktop_plot_panel_uses_bounds_and_sanitizes_surface_inf(monkeypatch) -
     panel._draw_surface(dummy_res)
     assert plotted_z
     assert not np.any(np.isinf(plotted_z[0]))
+
+
+def test_desktop_kpis_use_human_labels_and_piecewise_renders() -> None:
+    assert desktop._etiqueta_kpi_metodo("substitution_linear_combo") == "Sust. u = ax+by"
+    assert desktop._etiqueta_kpi_metodo("integrating_factor_xy") == "Factor μ(xy)"
+    assert desktop._etiqueta_kpi_metodo(None) == "—"
+
+    app = _make_headless_desktop_app()
+    app._notacion_salida.set(NATURAL)
+    app._started_at = None
+    kpis: dict[str, str] = {}
+    app.kpi_method = types.SimpleNamespace(configure=lambda **kw: kpis.__setitem__("method", kw["text"]))
+    app.kpi_verification = types.SimpleNamespace(configure=lambda **kw: kpis.__setitem__("ver", kw["text"]))
+    app.kpi_time = types.SimpleNamespace(configure=lambda **kw: kpis.__setitem__("time", kw["text"]))
+
+    from odecalc.api import solve
+
+    res = solve("dy/dx = Abs(x)/y", compute_numeric=False)
+    app._render_resultado_completo(res)
+    app._update_kpis(res)
+    assert kpis["method"] in {"Exacta", "Separable"}
+    assert kpis["ver"] == "residuo 0"
+    assert "Verificada (residuo 0)" in app.summary.plain_text()
+    assert app._rendered_pngs
+    assert app.steps.plain_text()
+

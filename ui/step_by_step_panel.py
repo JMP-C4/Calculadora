@@ -8,7 +8,7 @@ from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from core.notacion import adaptar_latex_mathtext
+from core.notacion import adaptar_latex_mathtext, latex_a_natural
 from math_engine.step_generator import SolutionStep
 
 
@@ -72,8 +72,9 @@ class StepByStepPanel(ttk.Frame):
         axes.set_axis_off()
 
         display = latex_str.strip()
-        if not display.startswith("$"):
-            display = f"${_sanitize_latex(display)}$"
+        while len(display) >= 2 and display.startswith("$") and display.endswith("$"):
+            display = display[1:-1].strip()
+        display = f"${_sanitize_latex(display)}$"
 
         axes.text(
             0.02,
@@ -91,7 +92,7 @@ class StepByStepPanel(ttk.Frame):
             canvas.draw()
         except Exception:
             widget.destroy()
-            self.text.insert("end", f"{latex_str}\n")
+            self.text.insert("end", f"{latex_a_natural(latex_str) or latex_str}\n")
             return
 
         self.text.window_create("end", window=widget, padx=8, pady=3)

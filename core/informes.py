@@ -258,47 +258,37 @@ def generar_latex(
 
 
 def _imagen_matematica(latex: str, *, ancho: float = 16.0) -> io.BytesIO | None:
-    """Renderiza una fórmula con matplotlib y devuelve un PNG en memoria."""
+    """Renderiza una fórmula con matplotlib (sin estado global pyplot) y devuelve PNG."""
 
     try:
-        import matplotlib
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.figure import Figure
 
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+        from core.notacion import adaptar_latex_mathtext
     except Exception:
         return None
-    formula = latex.strip().strip("$")
-    formula = re.sub(r"\\text\{([^{}]*)\}", r"\\mathrm{\1}", formula)
+    formula = adaptar_latex_mathtext(latex.strip().strip("$"))
     if not formula:
         return None
-    figura = None
     try:
-        figura = plt.figure(figsize=(ancho, 1.2), dpi=170)
+        figura = Figure(figsize=(ancho, 1.2), dpi=170)
+        FigureCanvasAgg(figura)
         figura.patch.set_facecolor("white")
         figura.text(0.01, 0.5, f"${formula}$", fontsize=13, va="center", color="#1f2937")
-        figura.axis("off")
         salida = io.BytesIO()
         figura.savefig(salida, format="png", bbox_inches="tight", facecolor="white")
         salida.seek(0)
         return salida
     except Exception:
         return None
-    finally:
-        if figura is not None:
-            try:
-                plt.close(figura)
-            except Exception:
-                pass
 
 
 def _grafica_resultado(resultado: ResultadoSolucion) -> io.BytesIO | None:
-    """Dibuja la curva solución (analítica o numérica) para el informe."""
+    """Dibuja la curva solución (analítica o numérica) para el informe sin usar pyplot."""
 
     try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.figure import Figure
     except Exception:
         return None
     try:
@@ -312,9 +302,10 @@ def _grafica_resultado(resultado: ResultadoSolucion) -> io.BytesIO | None:
     xs, ys = curva
     if getattr(xs, "size", 0) < 2:
         return None
-    figura = None
     try:
-        figura, eje = plt.subplots(figsize=(7.2, 3.6), dpi=150)
+        figura = Figure(figsize=(7.2, 3.6), dpi=150)
+        FigureCanvasAgg(figura)
+        eje = figura.add_subplot(111)
         eje.plot(xs, ys, color="#2563eb", linewidth=2.0, label="solución")
         if resultado.x0 is not None and resultado.y0 is not None:
             eje.scatter(
@@ -324,8 +315,8 @@ def _grafica_resultado(resultado: ResultadoSolucion) -> io.BytesIO | None:
                 zorder=3,
                 label="condición inicial",
             )
-        eje.set_xlabel("x")
-        eje.set_ylabel("y")
+        eje.set_xlabel("$x$")
+        eje.set_ylabel("$y$")
         eje.set_title("Curva solución")
         eje.grid(True, alpha=0.25)
         eje.legend(loc="best")
@@ -336,12 +327,6 @@ def _grafica_resultado(resultado: ResultadoSolucion) -> io.BytesIO | None:
         return salida
     except Exception:
         return None
-    finally:
-        if figura is not None:
-            try:
-                plt.close(figura)
-            except Exception:
-                pass
 
 
 def _leer_figura(fuente: Any) -> io.BytesIO | None:
@@ -462,7 +447,7 @@ def generar_pdf(
         historia.append(Paragraph("1. Enunciado", estilo_seccion))
         imagen = _imagen_matematica(resultado.ecuacion_latex)
         if imagen is not None:
-            historia.append(Image(imagen, width=15.0 * cm, height=2.0 * cm))
+            historia.append(Image(imagen, width=15.0 * cm, height=2.2 * cm, kind="proportional"))
         else:
             historia.append(
                 Paragraph(
@@ -486,7 +471,7 @@ def generar_pdf(
         historia.append(Paragraph("2. Método y solución", estilo_seccion))
         imagen = _imagen_matematica(resultado.solucion_latex)
         if imagen is not None:
-            historia.append(Image(imagen, width=15.0 * cm, height=2.0 * cm))
+            historia.append(Image(imagen, width=15.0 * cm, height=2.2 * cm, kind="proportional"))
         else:
             historia.append(
                 Paragraph(
@@ -555,7 +540,7 @@ def generar_pdf(
             if latex:
                 imagen = _imagen_matematica(latex)
                 if imagen is not None:
-                    historia.append(Image(imagen, width=14.0 * cm, height=1.9 * cm))
+                    historia.append(Image(imagen, width=14.0 * cm, height=2.0 * cm, kind="proportional"))
                 else:
                     historia.append(
                         Paragraph(

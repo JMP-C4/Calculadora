@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable
 
+from core.notacion import latex_a_natural
 from data.exercises import Exercise, load_exercises
 
 
@@ -50,7 +51,7 @@ class ExerciseLibrary(ttk.Frame):
                 iid=exercise.id,
                 values=(
                     exercise.ode_type,
-                    exercise.latex_str.strip("$"),
+                    latex_a_natural(exercise.latex_str) or exercise.latex_str.strip("$"),
                     exercise.description,
                 ),
             )

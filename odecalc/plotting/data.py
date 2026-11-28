@@ -62,12 +62,33 @@ def solution_curve(
     """Extrae la curva numérica o evalúa la solución particular simbólica."""
 
     if result.numeric is not None and result.numeric.success:
-        if result.numeric.x_arr is None or result.numeric.y_arr is None:
-            return None
-        return {
-            "x": np.asarray(result.numeric.x_arr, dtype=float),
-            "y": np.asarray(result.numeric.y_arr, dtype=float),
-        }
+        if result.numeric.x_arr is not None and result.numeric.y_arr is not None:
+            x_num = np.asarray(result.numeric.x_arr, dtype=float)
+            y_num = np.asarray(result.numeric.y_arr, dtype=float)
+            # Usar caché numérica si no hay solución particular explícita o si
+            # el intervalo solicitado coincide con el calculado numéricamente.
+            has_explicit_part = (
+                result.particular is not None
+                and result.particular.is_explicit
+                and not (result.particular.expr.free_symbols - {X, Y})
+            )
+            num_interval = result.numeric.interval or (
+                (float(x_num[0]), float(x_num[-1])) if x_num.size else None
+            )
+            matches_bounds = (
+                num_interval is not None
+                and abs(float(x_min) - float(num_interval[0])) <= 1e-6
+                and abs(float(x_max) - float(num_interval[1])) <= 1e-6
+            )
+            if not has_explicit_part or matches_bounds:
+                return {"x": x_num, "y": y_num}
+            if x_num.size and (
+                float(x_min) >= float(x_num[0]) - 1e-9
+                and float(x_max) <= float(x_num[-1]) + 1e-9
+            ):
+                mask_bounds = (x_num >= float(x_min) - 1e-9) & (x_num <= float(x_max) + 1e-9)
+                if np.any(mask_bounds):
+                    return {"x": x_num[mask_bounds], "y": y_num[mask_bounds]}
     solution = result.particular
     if solution is None or not solution.is_explicit:
         return None
@@ -291,7 +312,8 @@ def equilibrium_points(rhs: sp.Expr) -> list[dict[str, object]]:
         if root.has(Y) or root in (sp.zoo, sp.nan, sp.oo, -sp.oo):
             continue
         try:
-            if sp.im(sp.N(root)) != 0:
+            root_val = complex(sp.N(root))
+            if abs(root_val.imag) > 1e-9 or not math.isfinite(root_val.real):
                 continue
             slope = complex(sp.N(derivative.subs(Y, root)))
         except Exception:

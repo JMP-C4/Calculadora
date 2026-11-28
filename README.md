@@ -199,6 +199,64 @@ pip install -e ".[dev]"
 Si prefieres no instalar el paquete, define `PYTHONPATH=.` al ejecutar desde la
 raíz del repositorio.
 
+### Windows (PowerShell)
+
+Requisitos: Python 3.10–3.12 (instalar desde <https://www.python.org/downloads/>
+marcando **Add python.exe to PATH**) y Git for Windows si quieres clonar el
+repositorio. Tk viene incluido en el instalador oficial de Python, así que la
+interfaz de escritorio no necesita paquetes del sistema.
+
+```powershell
+# 1. Obtener el código
+git clone https://github.com/JMP-C4/Calculadora.git
+cd Calculadora
+
+# 2. Crear y activar el entorno virtual
+py -3.12 -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass   # sólo si PowerShell bloquea la activación
+.\.venv\Scripts\Activate.ps1
+# En CMD, en vez de las dos líneas anteriores: .venv\Scripts\activate.bat
+
+# 3. Actualizar pip e instalar dependencias
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+# Alternativa: instalar el proyecto y sus extras desde pyproject.toml
+# pip install -e ".[desktop,lab,dev]"
+```
+
+Si `py -3.12` no está disponible, comprueba las versiones instaladas con
+`py --list` y usa, por ejemplo, `py -3.11 -m venv .venv`.
+
+Para **desplegar** (arrancar) el proyecto, ejecuta la interfaz que quieras desde
+la misma PowerShell con el entorno activado:
+
+```powershell
+# EDO-Lab (recomendado): abre http://localhost:8501
+streamlit run app.py
+
+# Escritorio Tk
+python -m apps.desktop.app
+
+# Servidor web + API: abre http://127.0.0.1:8000
+python -m apps.web.server --host 127.0.0.1 --port 8000
+```
+
+La primera opción es la más completa (las siete pestañas). Para exponer el
+servidor web a otros equipos de la red local, cambia el host por
+`--host 0.0.0.0` y consulta desde otro equipo con
+`http://<IP-de-la-PC>:8000`; Windows puede pedir permiso en el firewall.
+Detén cualquier servidor con **Ctrl+C** y desactiva el entorno con `deactivate`.
+
+La capa de IA es opcional; en PowerShell se activa así:
+
+```powershell
+$env:ANTHROPIC_API_KEY = "..."
+$env:EDO_LAB_IA_ACTIVA = "1"
+```
+
+Sin esas variables todo funciona localmente. Para ejecutar las pruebas en
+Windows: `python -m pytest tests/edolab -q`.
+
 ## Uso rápido
 
 ### Python
@@ -412,8 +470,8 @@ los tests que los importan se omiten automáticamente durante la recolección.
 
 ## Alcance y limitaciones
 
-- El alcance actual es **primer orden**. Las fases de orden superior están
-  planificadas en `PLAN_MEJORAS_ODE_CALCULATOR.md`.
+- El alcance actual es **primer orden**; las fases de orden superior quedan
+  como trabajo futuro.
 - Cuando no hay forma cerrada, se devuelve el respaldo numérico y se indica
   explícitamente que la solución simbólica no está disponible.
 - Algunas integrales muy costosas pueden agotar el tiempo límite; en ese caso

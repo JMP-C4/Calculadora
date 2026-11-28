@@ -17,6 +17,7 @@ import sympy as sp
 
 from odecalc.classify import classify
 from odecalc.methods import solve_method, solve_with_dsolve
+from odecalc.methods.atomic_steps import enrich_solve_steps
 from odecalc.models import Attempt, Match, ParsedODE, SolveResult, Step
 from odecalc.numeric import solve_numeric
 from odecalc.parsing import parse_ode
@@ -40,21 +41,23 @@ def _numeric_steps(result: SolveResult) -> list[Step]:
     steps = [
         Step(
             number=1,
-            title="Respaldo numérico",
+            title="Respaldo numérico (por qué y planteamiento)",
             latex=eq_latex,
             explanation=(
-                "No se obtuvo una solución simbólica verificable; se integra "
-                "la EDO numéricamente con SciPy."
+                "No se obtuvo una solución simbólica verificable en forma cerrada (o se excedió "
+                "el tiempo simbólico), por lo que integramos numéricamente la ecuación $\\frac{dy}{dx} = f(x, y)$ "
+                "partiendo de la condición inicial $y(x_0) = y_0$ mediante SciPy."
             ),
             ascii=f"Solución numérica {status}: {numeric.message}",
         ),
         Step(
             number=2,
-            title="Método y tolerancias",
-            latex=rf"\mathrm{{Método:\ {numeric.method or 'auto'}}}",
+            title="Método numérico y fórmulas de avance adaptativo",
+            latex=rf"y_{{n+1}} = y_n + h\sum_i b_i k_i \quad (\mathrm{{Método:\ {numeric.method or 'RK45'}}})",
             explanation=(
-                "Se usan integradores adaptativos con tolerancias estrictas y "
-                "cambio automático a un método implícito si se detecta rigidez."
+                "Se aplica el método adaptativo de Runge-Kutta (combinando estimaciones de orden $4$ y $5$ "
+                "para acotar el error local $|y_{n+1}^{(p)} - y_{n+1}^{(c)}| < \\mathrm{tol}$) y se conmuta "
+                "automáticamente a un esquema implícito (Radau/BDF) si se detecta rigidez."
             ),
             ascii=numeric.message,
         ),
@@ -240,9 +243,9 @@ def _solve_symbolic(
         match, solution, steps, singular, verification = chosen
         result.chosen_method = match.method
         result.general = solution
-        result.steps = steps
         result.singular_solutions = singular
         result.verification = verification
+        used_singular = False
 
         if x0 is not None and y0 is not None:
             particular, warnings = apply_initial_conditions(
@@ -263,6 +266,7 @@ def _solve_symbolic(
                     )
                     if sing_part is not None:
                         particular = sing_part
+                        used_singular = True
                         warnings = [
                             "La condición inicial corresponde a una solución singular o de equilibrio.",
                             *sing_warnings,
@@ -277,6 +281,19 @@ def _solve_symbolic(
                     original_F=parsed.F,
                     x0=x0,
                 )
+
+        result.steps = enrich_solve_steps(
+            steps,
+            general=solution,
+            particular=result.particular,
+            rhs=parsed.rhs,
+            original_F=parsed.F,
+            x0=x0,
+            y0=y0,
+            verification=verification,
+            particular_verification=result.particular_verification,
+            used_singular=used_singular,
+        )
 
         result.validity = analyze_validity(
             parsed.rhs,
